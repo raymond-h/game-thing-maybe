@@ -5,6 +5,7 @@ steps:
 - name: backend
   image: haskell
   commands:
+    - echo hello
     - cd backend/
     - stack test
     - stack build
