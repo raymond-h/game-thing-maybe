@@ -21,9 +21,22 @@ extra-source-files:
 
 dependencies:
 - base >= 4.7 && < 5
+- dotenv
+- time
+- lens
+- bytestring
 - wai
+- wai-extra
+- http-types
 - scotty
 - aeson
+- lens-aeson
+- jose
+- mtl
+- wreq
+- text
+- base64-bytestring
+- base16-bytestring
 
 library:
   source-dirs: src
