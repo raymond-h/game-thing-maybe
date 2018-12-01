@@ -7,7 +7,8 @@ import Network.Wai (Application)
 import Network.Wai.Middleware.Routed
 import System.Environment
 import Crypto.JWT
-import Control.Lens (preview)
+import Data.Set
+import Control.Lens hiding ((.=))
 import qualified Web.Scotty as S
 
 import Auth
@@ -15,11 +16,15 @@ import Auth
 runApp :: IO ()
 runApp = do
   (Just audience) <- preview stringOrUri <$> getEnv "JWT_AUDIENCE"
+  (Just issuer) <- preview stringOrUri <$> getEnv "JWT_ISSUER"
+
   (Right jwkSet) <- fetchJWKSet =<< getEnv "AUTH0_DOMAIN"
 
   let
-    audCheck = (==audience)
-    jwtValidationSettings = defaultJWTValidationSettings audCheck
+    jwtValidationSettings =
+      defaultJWTValidationSettings (==audience)
+        & validationSettingsAlgorithms .~ fromList [RS256]
+        & jwtValidationSettingsIssuerPredicate .~ (==issuer)
 
   S.scotty 8080 $ do
     S.get "/" $ do
