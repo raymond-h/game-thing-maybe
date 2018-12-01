@@ -15,7 +15,9 @@ pipeline:
       - stack build
       - stack install
       - tar -cvf out.tar /root/.local/bin/main Dockerfile
-      - base64 out.tar
+      - cp out.tar /output/
+    volumes:
+      - '/tmp:/output'
 
   rebuild-cache:
     image: drillster/drone-volume-cache
