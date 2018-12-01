@@ -3,7 +3,7 @@ name: default
 
 steps:
 - name: backend
-  image: haskell
+  image: haskell:8.4.4
   commands:
     - echo hello
     - cd backend/
