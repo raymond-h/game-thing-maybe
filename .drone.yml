@@ -2,11 +2,20 @@ kind: pipeline
 name: default
 
 steps:
-- name: backend
-  image: haskell:8.4.4
-  commands:
-    - echo hello
-    - cd backend/
-    - stack test
-    - stack build
-    - stack install
+  - name: backend
+    image: haskell:8.4.4
+    volumes:
+      - name: cache
+        path: /root/.stack
+    commands:
+      - cd backend/
+      - stack test
+      - stack build
+      - stack install
+      - tar -cvf out.tar /root/.local/bin/main Dockerfile
+      - base64 out.tar
+
+volumes:
+  - name: cache
+    host:
+      path: /tmp/cache
