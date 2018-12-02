@@ -9,7 +9,7 @@ pipeline:
       - cp /root/.local/bin/main main
       - tar -cvf out.tar main Dockerfile
     volumes:
-      - '/tmp/cache_stack:/root/.stack'
+      - '/tmp/cache_stack/snapshots:/root/.stack/snapshots'
 
   deploy-backend:
     image: ebiwd/alpine-ssh
