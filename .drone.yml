@@ -16,4 +16,4 @@ pipeline:
     secrets: [ dokku_key ]
     commands:
       - 'add-ssh-key dokku "$DOKKU_KEY"'
-      - 'ssh dokku@raymond-h.me -- tar:in advance-wars-maybe-backend < out.tar'
+      - 'cat out.tar | ssh dokku@raymond-h.me -- tar:in advance-wars-maybe-backend'
