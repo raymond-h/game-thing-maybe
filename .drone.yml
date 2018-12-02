@@ -3,9 +3,7 @@ pipeline:
     image: haskell:8.4.4
     commands:
       - cd backend/
-      - stack test
-      - stack build
-      - stack install
+      - stack build --test --copy-bins
       - cp /root/.local/bin/main main
       - tar -cvf out.tar main Dockerfile
     volumes:
