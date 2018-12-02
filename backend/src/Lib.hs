@@ -23,6 +23,9 @@ getEnv' var = do
   mVal <- lookupEnv var
   return $ mVal >>= readMaybe
 
+listOfPairsToObject :: [(String, String)] -> Value
+listOfPairsToObject = object . (map $ uncurry (.=)) . over (mapped._1) T.pack
+
 runApp :: IO ()
 runApp = do
   port <- fromMaybe 8080 <$> getEnv' "PORT"
@@ -49,7 +52,7 @@ runApp = do
       verifyJWT jwtValidationSettings jwkSet
 
       env <- liftIO getEnvironment
-      S.json . object . map (\(k, v) -> (T.pack k) .= v) $ env
+      S.json . listOfPairsToObject $ env
 
     S.get "/auth" $ do
       verifyJWT jwtValidationSettings jwkSet
