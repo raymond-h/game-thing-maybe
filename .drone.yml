@@ -1,12 +1,4 @@
 pipeline:
-  restore-cache:
-    image: drillster/drone-volume-cache
-    restore: true
-    mount:
-      - /root/.stack
-    volumes:
-      - /tmp/cache:/cache
-
   backend:
     image: haskell:8.4.4
     commands:
@@ -15,14 +7,5 @@ pipeline:
       - stack build
       - stack install
       - tar -cvf out.tar /root/.local/bin/main Dockerfile
-      - cp out.tar /output/
     volumes:
-      - '/tmp:/output'
-
-  rebuild-cache:
-    image: drillster/drone-volume-cache
-    rebuild: true
-    mount:
-      - /root/.stack
-    volumes:
-      - /tmp/cache:/cache
+      - '/tmp/cache_stack:/root/.stack'
