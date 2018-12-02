@@ -35,6 +35,8 @@ frontendCorsResourcePolicy frontendOrigin = simpleCorsResourcePolicy {
 runApp :: IO ()
 runApp = do
   port <- fromMaybe 8080 <$> getEnv' "PORT"
+  isDev <- fromMaybe False <$> getEnv' "DEV"
+  print ("Dev?", isDev)
 
   corsResPolicy <- frontendCorsResourcePolicy <$> getEnv "FRONTEND_ORIGIN"
   (Just audience) <- preview stringOrUri <$> getEnv "JWT_AUDIENCE"
@@ -49,7 +51,9 @@ runApp = do
         & jwtValidationSettingsIssuerPredicate .~ (==issuer)
 
   S.scotty port $ do
-    S.middleware $ cors $ (const . Just) corsResPolicy
+    S.middleware $
+      if isDev then simpleCors
+        else cors $ (const . Just) corsResPolicy
 
     S.get "/" $ do
       S.text "hello"
