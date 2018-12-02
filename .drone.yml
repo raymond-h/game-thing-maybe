@@ -10,3 +10,10 @@ pipeline:
       - tar -cvf out.tar main Dockerfile
     volumes:
       - '/tmp/cache_stack:/root/.stack'
+
+  deploy:
+    image: ebiwd/alpine-ssh
+    secrets: [ dokku_key ]
+    commands:
+      - 'add-ssh-key dokku "$DOKKU_KEY"'
+      - 'ssh dokku@raymond-h.me -- tar:in advance-wars-maybe-backend < out.tar'
