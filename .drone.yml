@@ -14,7 +14,7 @@ pipeline:
     image: node:dubnium
     group: build
     environment:
-      - 'API_URL="http://advance-wars-maybe-backend.raymond-h.me"'
+      - 'API_URL=http://advance-wars-maybe-backend.raymond-h.me'
     commands:
       - cd frontend/
       - npm install
