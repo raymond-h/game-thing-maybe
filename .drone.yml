@@ -14,7 +14,7 @@ pipeline:
     image: node:dubnium
     group: build
     environment:
-      - 'API_URL=http://advance-wars-maybe-backend.raymond-h.me'
+      - 'API_URL=https://advance-wars-maybe-backend.raymond-h.me'
     commands:
       - cd frontend/
       - npm install
@@ -29,6 +29,9 @@ pipeline:
     commands:
       - 'add-ssh-key dokku "$DOKKU_KEY"'
       - 'ssh dokku@raymond-h.me -- tar:in advance-wars-maybe-backend < backend/out.tar'
+    when:
+      event: push
+      branch: master
 
   deploy-frontend:
     image: lucap/drone-netlify
@@ -36,3 +39,6 @@ pipeline:
     secrets: [ netlify_token ]
     site_id: 36abb268-dd0b-49f4-aa53-559c5eb22ecf
     path: frontend/dist
+    when:
+      event: push
+      branch: master
