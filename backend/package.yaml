@@ -38,6 +38,7 @@ dependencies:
 - text
 - base64-bytestring
 - base16-bytestring
+- wai-cors
 
 library:
   source-dirs: src

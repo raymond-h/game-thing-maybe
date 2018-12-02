@@ -6,6 +6,7 @@ module Lib where
 import Data.Aeson
 import Network.Wai (Application)
 import Network.Wai.Middleware.Routed
+import Network.Wai.Middleware.Cors
 import System.Environment
 import Crypto.JWT
 import Data.Set (fromList)
@@ -13,6 +14,7 @@ import Data.Maybe
 import Text.Read (readMaybe)
 import Control.Lens hiding ((.=))
 import Control.Monad.Trans (liftIO)
+import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text as T
 import qualified Web.Scotty as S
 
@@ -26,10 +28,15 @@ getEnv' var = do
 listOfPairsToObject :: [(String, String)] -> Value
 listOfPairsToObject = object . (map $ uncurry (.=)) . over (mapped._1) T.pack
 
+frontendCorsResourcePolicy frontendOrigin = simpleCorsResourcePolicy {
+  corsOrigins = Just ([BS.pack frontendOrigin], True)
+}
+
 runApp :: IO ()
 runApp = do
   port <- fromMaybe 8080 <$> getEnv' "PORT"
 
+  corsResPolicy <- frontendCorsResourcePolicy <$> getEnv "FRONTEND_ORIGIN"
   (Just audience) <- preview stringOrUri <$> getEnv "JWT_AUDIENCE"
   (Just issuer) <- preview stringOrUri <$> getEnv "JWT_ISSUER"
 
@@ -42,6 +49,8 @@ runApp = do
         & jwtValidationSettingsIssuerPredicate .~ (==issuer)
 
   S.scotty port $ do
+    S.middleware $ cors $ (const . Just) corsResPolicy
+
     S.get "/" $ do
       S.text "hello"
 
