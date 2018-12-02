@@ -8,5 +8,6 @@ import Configuration.Dotenv.Types
 
 main :: IO ()
 main = do
-  void $ loadFile defaultConfig
+  -- we don't care if the file is missing
+  (void $ loadFile defaultConfig) `onMissingFile` return ()
   runApp
