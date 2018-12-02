@@ -8,10 +8,12 @@ import Network.Wai (Application)
 import Network.Wai.Middleware.Routed
 import System.Environment
 import Crypto.JWT
-import Data.Set
+import Data.Set (fromList)
 import Data.Maybe
 import Text.Read (readMaybe)
 import Control.Lens hiding ((.=))
+import Control.Monad.Trans (liftIO)
+import qualified Data.Text as T
 import qualified Web.Scotty as S
 
 import Auth
@@ -42,6 +44,12 @@ runApp = do
 
     S.get "/some-json" $ do
       S.json $ object ["foo" .= Number 23, "bar" .= Number 42]
+
+    S.get "/.env" $ do
+      verifyJWT jwtValidationSettings jwkSet
+
+      env <- liftIO getEnvironment
+      S.json . object . map (\(k, v) -> (T.pack k) .= v) $ env
 
     S.get "/auth" $ do
       verifyJWT jwtValidationSettings jwkSet
