@@ -2,6 +2,6 @@ FROM debian:jessie
 
 WORKDIR /app
 
-COPY main .
+COPY main /app/main
 
 CMD ['./main']
