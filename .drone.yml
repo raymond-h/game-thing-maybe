@@ -1,6 +1,7 @@
 pipeline:
   backend:
     image: haskell:8.4.4
+    group: build
     commands:
       - cd backend/
       - stack build --test --copy-bins
@@ -9,9 +10,29 @@ pipeline:
     volumes:
       - '/tmp/cache_stack/snapshots:/root/.stack/snapshots'
 
+  frontend:
+    image: node:dubnium
+    group: build
+    environment:
+      - 'API_URL="http://advance-wars-maybe-backend.raymond-h.me"'
+    commands:
+      - cd frontend/
+      - npm install
+      - npm run lint
+      - npm test
+      - npm run build
+
   deploy-backend:
     image: ebiwd/alpine-ssh
+    group: deploy
     secrets: [ dokku_key ]
     commands:
       - 'add-ssh-key dokku "$DOKKU_KEY"'
       - 'ssh dokku@raymond-h.me -- tar:in advance-wars-maybe-backend < backend/out.tar'
+
+  deploy-frontend:
+    image: lucap/drone-netlify
+    group: deploy
+    secrets: [ netlify_token ]
+    site-id: 36abb268-dd0b-49f4-aa53-559c5eb22ecf
+    path: frontend/dist
