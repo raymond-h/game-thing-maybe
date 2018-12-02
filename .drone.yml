@@ -34,5 +34,5 @@ pipeline:
     image: lucap/drone-netlify
     group: deploy
     secrets: [ netlify_token ]
-    site-id: 36abb268-dd0b-49f4-aa53-559c5eb22ecf
+    site_id: 36abb268-dd0b-49f4-aa53-559c5eb22ecf
     path: frontend/dist
