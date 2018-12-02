@@ -4,4 +4,4 @@ WORKDIR /app
 
 COPY main /app/main
 
-CMD ['/app/main']
+CMD /app/main
