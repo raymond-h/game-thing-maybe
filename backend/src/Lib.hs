@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Lib where
 
@@ -8,13 +9,22 @@ import Network.Wai.Middleware.Routed
 import System.Environment
 import Crypto.JWT
 import Data.Set
+import Data.Maybe
+import Text.Read (readMaybe)
 import Control.Lens hiding ((.=))
 import qualified Web.Scotty as S
 
 import Auth
 
+getEnv' :: Read r => String -> IO (Maybe r)
+getEnv' var = do
+  mVal <- lookupEnv var
+  return $ mVal >>= readMaybe
+
 runApp :: IO ()
 runApp = do
+  port <- fromMaybe 8080 <$> getEnv' "PORT"
+
   (Just audience) <- preview stringOrUri <$> getEnv "JWT_AUDIENCE"
   (Just issuer) <- preview stringOrUri <$> getEnv "JWT_ISSUER"
 
@@ -26,7 +36,7 @@ runApp = do
         & validationSettingsAlgorithms .~ fromList [RS256]
         & jwtValidationSettingsIssuerPredicate .~ (==issuer)
 
-  S.scotty 8080 $ do
+  S.scotty port $ do
     S.get "/" $ do
       S.text "hello"
 
