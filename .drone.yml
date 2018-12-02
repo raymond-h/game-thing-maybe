@@ -11,11 +11,9 @@ pipeline:
     volumes:
       - '/tmp/cache_stack:/root/.stack'
 
-  deploy:
+  deploy-backend:
     image: ebiwd/alpine-ssh
     secrets: [ dokku_key ]
     commands:
       - 'add-ssh-key dokku "$DOKKU_KEY"'
-      - 'pwd'
-      - 'ls -lah'
-      - 'cat out.tar | ssh dokku@raymond-h.me -- tar:in advance-wars-maybe-backend'
+      - 'ssh dokku@raymond-h.me -- tar:in advance-wars-maybe-backend < backend/out.tar'
