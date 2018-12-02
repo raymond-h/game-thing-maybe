@@ -2,7 +2,7 @@ FROM debian:stretch
 
 WORKDIR /app
 
-RUN apt update && apt install libgmp10
+RUN apt-get update && apt-get install libgmp10
 
 COPY main /app/main
 
