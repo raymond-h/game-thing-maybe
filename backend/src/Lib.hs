@@ -5,7 +5,7 @@ module Lib where
 
 import Data.Aeson
 import Network.Wai (Application)
-import Network.Wai.Middleware.Routed
+import Network.Wai.Middleware.RequestLogger
 import Network.Wai.Middleware.Cors
 import System.Environment
 import Crypto.JWT
@@ -51,6 +51,8 @@ runApp = do
         & jwtValidationSettingsIssuerPredicate .~ (==issuer)
 
   S.scotty port $ do
+    S.middleware $ if isDev then logStdoutDev else logStdout
+
     S.middleware $
       if isDev
         then simpleCors
