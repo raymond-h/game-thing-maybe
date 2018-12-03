@@ -52,7 +52,8 @@ runApp = do
 
   S.scotty port $ do
     S.middleware $
-      if isDev then simpleCors
+      if isDev
+        then simpleCors
         else cors $ (const . Just) corsResPolicy
 
     S.get "/" $ do

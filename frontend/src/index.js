@@ -1,14 +1,7 @@
-console.log('hello world!', document.getElementById('root'));
+import Vue from 'vue';
+import App from './components/App';
 
-const apiUrl = process.env.API_URL.replace(/{hostname}/g, location.hostname);
-
-async function main() {
-  const res = await fetch(apiUrl + '/some-json');
-
-  const json = await res.json();
-
-  console.log('From backend:', json);
-}
-
-main()
-  .catch(err => console.error(err));
+new Vue({
+  el: '#root',
+  render: h => h(App)
+});
