@@ -1,7 +1,11 @@
 <template>
-  <div>
-    <h1>{{ title }}</h1>
-    <div>{{ data }}</div>
+  <div class="container">
+    <h1 class="title-bar">
+      {{ title }}
+    </h1>
+    <div class="contents">
+      {{ data }}
+    </div>
   </div>
 </template>
 
@@ -29,5 +33,32 @@ export default {
 };
 </script>
 
+<style>
+body {
+  margin: 0;
+}
+</style>
+
 <style scoped>
+.container {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: auto minmax(auto, 1000px) auto;
+  grid-template-rows: 50px auto;
+}
+
+.title-bar {
+  color: red;
+  background: rgb(0, 255, 0);
+  margin: 0;
+  grid-column-start: 2;
+  grid-row-start: 1;
+}
+
+.contents {
+  background: rgb(127, 127, 255);
+  grid-column-start: 2;
+  grid-row-start: 2;
+}
 </style>
