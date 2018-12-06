@@ -14,6 +14,7 @@ import Data.Maybe
 import Text.Read (readMaybe)
 import Control.Lens hiding ((.=))
 import Control.Monad.Trans (liftIO)
+import Control.Monad.STM
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text as T
 import qualified Web.Scotty as S
@@ -32,6 +33,12 @@ frontendCorsResourcePolicy frontendOrigin = simpleCorsResourcePolicy {
   corsOrigins = Just ([BS.pack frontendOrigin], True)
 }
 
+devCorsResourcePolicy = simpleCorsResourcePolicy {
+  corsOrigins = Nothing,
+  corsMethods = simpleMethods,
+  corsRequestHeaders = ["Authorization"]
+}
+
 runApp :: IO ()
 runApp = do
   port <- fromMaybe 8080 <$> getEnv' "PORT"
@@ -47,21 +54,22 @@ runApp = do
   let
     jwtValidationSettings =
       defaultJWTValidationSettings (==audience)
-        & validationSettingsAlgorithms .~ fromList [RS256]
-        & jwtValidationSettingsIssuerPredicate .~ (==issuer)
+        & algorithms .~ fromList [RS256]
+        & issuerPredicate .~ (==issuer)
+        & allowedSkew .~ 30 * 60
 
   S.scotty port $ do
     S.middleware $ if isDev then logStdoutDev else logStdout
 
-    S.middleware $
-      if isDev
-        then simpleCors
-        else cors $ (const . Just) corsResPolicy
+    S.middleware $ cors . const . Just $
+      if isDev then devCorsResourcePolicy else corsResPolicy
 
     S.get "/" $ do
       S.text "hello"
 
     S.get "/some-json" $ do
+      verifyJWT jwtValidationSettings jwkSet
+
       S.json $ object ["foo" .= Number 23, "bar" .= Number 42]
 
     S.get "/.env" $ do

@@ -2,33 +2,52 @@
   <div class="container">
     <h1 class="title-bar">
       {{ title }}
+      <button
+        v-if="!authenticated"
+        @click="login"
+      >
+        Login
+      </button>
+      <button
+        v-if="authenticated"
+        @click="logout"
+      >
+        Logout
+      </button>
     </h1>
     <div class="contents">
-      {{ data }}
+      <!-- eslint-disable -->
+      <router-view />
     </div>
   </div>
 </template>
 
 <script>
-const apiUrl = process.env.API_URL.replace(/{hostname}/g, location.hostname);
-
-async function callApi() {
-  const res = await fetch(apiUrl + '/some-json');
-
-  const json = await res.json();
-
-  console.log('From backend:', json);
-
-  return json;
-}
+import authService from '../api/auth';
 
 export default {
   data() {
-    return { title: 'hello world', data: null };
+    return { authenticated: false, title: 'hello world' };
   },
 
   mounted() {
-    callApi().then(data => this.data = data);
+    this._authSubs =
+      authService.isAuthenticated$
+        .subscribe(isAuth => this.authenticated = isAuth);
+  },
+
+  beforeDestroy() {
+    this._authSubs.unsubscribe();
+  },
+
+  methods: {
+    login() {
+      authService.login();
+    },
+
+    logout() {
+      authService.logout();
+    }
   }
 };
 </script>
@@ -45,7 +64,7 @@ body {
   height: 100vh;
   display: grid;
   grid-template-columns: auto minmax(auto, 1000px) auto;
-  grid-template-rows: 50px auto;
+  grid-template-rows: min-content auto;
 }
 
 .title-bar {

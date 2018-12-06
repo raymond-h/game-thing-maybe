@@ -15,6 +15,10 @@ pipeline:
     group: build
     environment:
       - 'API_URL=https://advance-wars-maybe-backend.raymond-h.me'
+      - 'AUTH0_DOMAIN=advance-wars-maybe.eu.auth0.com'
+      - 'AUTH0_REDIRECT_URI=https://game-thing-maybe.netlify.com/login_callback'
+      - 'AUTH0_AUDIENCE=https://advance-wars-maybe-backend.raymond-h.me/'
+      - 'AUTH0_LOGOUT_URL=https://game-thing-maybe.netlify.com/'
     commands:
       - cd frontend/
       - npm install

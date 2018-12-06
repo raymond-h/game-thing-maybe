@@ -33,7 +33,9 @@
     "vue-template-compiler": "^2.5.17"
   },
   "dependencies": {
+    "auth0-js": "^9.8.2",
     "vue": "^2.5.17",
-    "vue-hot-reload-api": "^2.3.1"
+    "vue-hot-reload-api": "^2.3.1",
+    "vue-router": "^3.0.2"
   }
 }
