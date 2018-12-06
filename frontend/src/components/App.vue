@@ -49,7 +49,7 @@ body {
 }
 
 .title-bar {
-  color: red;
+  color: white;
   background: rgb(0, 255, 0);
   margin: 0;
   grid-column-start: 2;
