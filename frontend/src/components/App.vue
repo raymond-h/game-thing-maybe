@@ -26,30 +26,19 @@
 import authService from '../api/auth';
 
 export default {
-  data() {
-    return { authenticated: false, userInfo: null };
+  subscriptions() {
+    return {
+      authenticated: authService.isAuthenticated$,
+      userInfo: authService.userInfo$
+    };
   },
 
   computed: {
     title() {
       if(this.userInfo == null) return 'hello world';
 
-      return `hello ${this.userInfo.name}`;
+      return `hello ${this.userInfo.nickname}!!`;
     }
-  },
-
-  mounted() {
-    this._authSubs =
-      authService.isAuthenticated$
-        .subscribe(isAuth => this.authenticated = isAuth);
-
-    this._userInfoSubs =
-      authService.userInfo$.subscribe(userInfo => this.userInfo = userInfo);
-  },
-
-  beforeDestroy() {
-    this._authSubs.unsubscribe();
-    this._userInfoSubs.unsubscribe();
   },
 
   methods: {
