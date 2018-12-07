@@ -1,6 +1,8 @@
 import auth0 from 'auth0-js';
 import * as rxjs from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { tap, map } from 'rxjs/operators';
+
+import jwtDecode from 'jwt-decode';
 
 export class AuthService {
   constructor() {
@@ -14,10 +16,23 @@ export class AuthService {
     });
 
     this.isAuthenticated$ = new rxjs.BehaviorSubject(this.isAuthenticated());
+
+    this.userInfo$ = this.isAuthenticated$
+      .pipe(
+        map(() => this.userInfo)
+      );
   }
 
   get accessToken() {
     return localStorage.getItem('access_token');
+  }
+
+  get userInfo() {
+    if(!this.isAuthenticated()) {
+      return null;
+    }
+
+    return jwtDecode(localStorage.getItem('id_token'));
   }
 
   isAuthenticated() {
