@@ -26,6 +26,7 @@ pipeline:
       - npm run lint
       - npm test
       - npm run build
+      - cp -R static/* dist/
 
   deploy-backend:
     image: ebiwd/alpine-ssh
