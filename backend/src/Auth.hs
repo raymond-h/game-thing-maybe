@@ -23,7 +23,7 @@ import qualified Data.ByteString.Base64.URL    as B64
 import qualified Web.Scotty as S
 import qualified Web.Scotty.Trans as ST
 
-verifyJWT :: JWKStore jwk => JWTValidationSettings -> jwk -> S.ActionM ClaimsSet
+verifyJWT :: JWKStore jwk => JWTValidationSettings -> jwk -> S.ActionM (BS.ByteString, ClaimsSet)
 verifyJWT jwtValidationSettings jwkSet = do
   req <- S.request
   case getAccessToken req of
@@ -33,7 +33,7 @@ verifyJWT jwtValidationSettings jwkSet = do
 
       case verifyToken jwtValidationSettings now jwkSet token of
         Left  err -> S.raise . ST.stringError . show $ err
-        Right claims -> return claims
+        Right claims -> return (token, claims)
 
 fetchJWKSet :: String -> IO (Either String JWKSet)
 fetchJWKSet auth0Domain = do

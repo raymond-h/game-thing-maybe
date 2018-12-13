@@ -14,6 +14,7 @@
       >
         Logout
       </button>
+      {{ someJson }}
     </h1>
     <div class="contents">
       <!-- eslint-disable -->
@@ -24,12 +25,19 @@
 
 <script>
 import authService from '../api/auth';
+import * as api from '../api';
+import * as rxjs from 'rxjs';
+import { flatMap } from 'rxjs/operators';
 
 export default {
   subscriptions() {
     return {
       authenticated: authService.isAuthenticated$,
-      userInfo: authService.userInfo$
+      userInfo: authService.userInfo$,
+      someJson: authService.isAuthenticated$
+        .pipe(
+          flatMap(isAuth => isAuth ? api.someJson() : rxjs.of())
+        )
     };
   },
 
