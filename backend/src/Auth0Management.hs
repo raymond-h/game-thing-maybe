@@ -5,31 +5,19 @@ module Auth0Management where
 
 import GHC.Generics
 import Data.Aeson
+import Data.Aeson.Lens
 import Control.Lens hiding ((.=))
 import Control.Concurrent.MVar
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Data.ByteString.Char8 as BS
-import qualified Network.Wreq as WR
+import Network.Wreq as W
 
-modifyWreqOptions token opts =
-  opts &~ do
-    WR.auth ?= WR.oauth2Bearer (BS.pack . T.unpack $ token)
-
+baseApiUrl :: Auth0Config -> String
 baseApiUrl auth0Config = "https://" <> (T.unpack $ domain auth0Config) <> "/api/v2"
 
-get url auth0Config = withToken auth0Config $ \token -> do
-  origRes <- WR.getWith (modifyWreqOptions token WR.defaults) ((baseApiUrl auth0Config) <> url)
-  res <- WR.asJSON origRes
-  return $ res ^. WR.responseBody
-
-data GetTokenResponse = GetTokenResponse {
-  access_token :: T.Text,
-  expires_in :: Int
-} deriving (Eq, Show, Generic)
-
-instance FromJSON GetTokenResponse where
-
-getToken domain clientId clientSecret = do
+fetchToken :: T.Text -> T.Text -> T.Text -> IO T.Text
+fetchToken domain clientId clientSecret = do
   let body = object [
           "grant_type" .= String "client_credentials",
           "client_id" .= String clientId,
@@ -37,43 +25,68 @@ getToken domain clientId clientSecret = do
           "audience" .= (String $ "https://" <> domain <> "/api/v2/")
         ]
 
-  res <- WR.asJSON =<< WR.post ("https://" <> (T.unpack domain) <> "/oauth/token") body
+  res <- asJSON =<< post ("https://" <> (T.unpack domain) <> "/oauth/token") body
 
-  let response = (res ^. WR.responseBody :: GetTokenResponse)
+  let accessToken = (res :: Response Value) ^. responseBody . key "access_token" . _String
 
-  return $ access_token response
+  return accessToken
 
 data Auth0Config = Auth0Config {
   domain :: T.Text,
   clientId :: T.Text,
   clientSecret :: T.Text,
-  accessTokenMVar :: MVar T.Text
+  accessToken :: T.Text
 } deriving (Eq)
 
+getConfig :: T.Text -> T.Text -> T.Text -> IO Auth0Config
 getConfig domain clientId clientSecret = do
-  accessToken <- getToken domain clientId clientSecret
-  accessTokenMVar <- newMVar accessToken
+  accessToken <- fetchToken domain clientId clientSecret
 
   return $ Auth0Config {
     domain = domain,
     clientId = clientId,
     clientSecret = clientSecret,
-    accessTokenMVar = accessTokenMVar
+    accessToken = accessToken
   }
 
-withToken :: Auth0Config -> (T.Text -> IO a) -> IO a
-withToken auth0Config f = do
-  accessToken <- takeMVar (accessTokenMVar auth0Config)
-  putMVar (accessTokenMVar auth0Config) accessToken
+addAuth0 :: Auth0Config -> W.Options -> W.Options
+addAuth0 auth0Config = auth .~ justBearer auth0Config
+  where
+    justBearer = Just . oauth2Bearer . T.encodeUtf8 . accessToken
 
-  f accessToken
+type UserInfo = Value
 
-data Auth0UserInfo = Auth0UserInfo {
-  name :: T.Text,
-  nickname :: T.Text
-} deriving (Eq, Show, Generic)
+-- data UserInfo = UserInfo {
+--   name :: T.Text,
+--   nickname :: T.Text
+-- } deriving (Eq, Show, Generic)
 
-instance FromJSON Auth0UserInfo where
+-- instance FromJSON UserInfo where
+-- instance ToJSON UserInfo where
 
-getUserInfo :: BS.ByteString -> Auth0Config -> IO Auth0UserInfo
-getUserInfo userId = get $ "/users/" <> (BS.unpack $ userId)
+getUserInfo :: T.Text -> Auth0Config -> IO UserInfo
+getUserInfo userId auth0Config = do
+  let opts = defaults & addAuth0 auth0Config
+
+  res <- asJSON =<< getWith opts (baseApiUrl auth0Config <> "/users/" <> T.unpack userId)
+
+  return $ res^.responseBody
+
+listUsers :: Auth0Config -> IO [UserInfo]
+listUsers auth0Config = do
+  let opts = defaults & addAuth0 auth0Config
+
+  res <- asJSON =<< getWith opts (baseApiUrl auth0Config <> "/users")
+
+  return $ res^.responseBody
+
+searchUsersV3 :: T.Text -> Auth0Config -> IO [UserInfo]
+searchUsersV3 query auth0Config = do
+  let opts = defaults
+        & addAuth0 auth0Config
+        & param "search_engine" .~ ["v3"]
+        & param "q" .~ [query]
+
+  res <- asJSON =<< getWith opts (baseApiUrl auth0Config <> "/users")
+
+  return $ res^.responseBody

@@ -1,6 +1,6 @@
 import auth0 from 'auth0-js';
 import * as rxjs from 'rxjs';
-import { tap, map } from 'rxjs/operators';
+import { tap, map, filter, switchMap, distinctUntilChanged, share } from 'rxjs/operators';
 
 import jwtDecode from 'jwt-decode';
 
@@ -19,7 +19,19 @@ export class AuthService {
 
     this.userInfo$ = this.isAuthenticated$
       .pipe(
-        map(() => this.userInfo)
+        distinctUntilChanged(),
+        filter(isAuth => isAuth),
+        map(() => this.accessToken),
+        switchMap(accessToken =>
+          rxjs.bindNodeCallback(cb => this._auth0.client.userInfo(accessToken, cb))()
+        ),
+        share()
+      );
+
+    this.idTokenInfo$ = this.isAuthenticated$
+      .pipe(
+        map(() => this.idTokenInfo),
+        share()
       );
   }
 
@@ -27,7 +39,17 @@ export class AuthService {
     return localStorage.getItem('access_token');
   }
 
-  get userInfo() {
+  get expiresAt() {
+    const expiresAtStr = localStorage.getItem('expires_at');
+
+    return expiresAtStr ? new Date(Number(expiresAtStr)) : null;
+  }
+
+  get idToken() {
+    return localStorage.getItem('id_token');
+  }
+
+  get idTokenInfo() {
     if(!this.isAuthenticated()) {
       return null;
     }

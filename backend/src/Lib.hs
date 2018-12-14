@@ -22,6 +22,7 @@ import qualified Web.Scotty as S
 
 import Auth
 import qualified AppState as AS
+import qualified Auth0Management as A0M
 
 getEnv' :: Read r => String -> IO (Maybe r)
 getEnv' var = do
@@ -71,6 +72,11 @@ runApp = do
 
   (Right jwkSet) <- fetchJWKSet =<< getEnv "AUTH0_DOMAIN"
 
+  domain <- T.pack <$> getEnv "AUTH0_DOMAIN"
+  clientId <- T.pack <$> getEnv "AUTH0_CLIENT_ID"
+  clientSecret <- T.pack <$> getEnv "AUTH0_CLIENT_SECRET"
+  a0Config <- A0M.getConfig domain clientId clientSecret
+
   appState <- newTVarIO AS.initialAppState
 
   let
@@ -99,10 +105,13 @@ runApp = do
       S.json . listOfPairsToObject $ env
 
     S.get "/auth" $ do
-      user <- auth
-      S.text $ "gj on the authenticating: " <> (LT.pack $ show user)
+      userId <- auth
+      S.text $ "gj on the authenticating: " <> (LT.pack $ show userId)
 
-    S.get "/me" $ auth >>= S.json
+    S.get "/me" $ do
+      userId <- auth
+      info <- liftIO $ A0M.getUserInfo userId a0Config
+      S.json info
 
     S.get "/users" $ do
       appStateData <- liftIO $ readTVarIO appState
