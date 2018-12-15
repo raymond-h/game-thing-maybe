@@ -6,6 +6,7 @@ module Lib where
 
 import GHC.Generics
 import Data.Aeson
+import Data.Aeson.Lens
 import Network.Wai (Application)
 import Network.Wai.Middleware.RequestLogger
 import Network.Wai.Middleware.Cors
@@ -149,11 +150,11 @@ runApp = do
             M.empty
               & at "displayName" .~ (String <$> displayName userInfo)
 
-      unless (M.null newMetadata) $ do
-        liftIO $ A0M.updateUserInfo userId (object ["user_metadata" .= newMetadata]) a0Config
-        return ()
+      userProfile <- liftIO $ if (not $ M.null newMetadata)
+        then A0M.updateUserInfo userId (object ["user_metadata" .= newMetadata]) a0Config
+        else A0M.getUserInfo userId a0Config
 
-      S.json $ object ["ok" .= True]
+      S.json $ object ["displayName" .= (userProfile ^. key "user_metadata" . key "displayName" . _String)]
 
     S.get "/users" $ do
       appStateData <- liftIO $ readTVarIO appState

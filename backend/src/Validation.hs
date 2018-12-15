@@ -40,4 +40,4 @@ maybeRespond ea = case ea of
 handleValidation :: (Ord f, ToJSONKey f, ToJSON e) => Validation [(f, e)] a -> ActionM a
 handleValidation = maybeRespond . first formatValError . fields
   where
-    formatValError errMap = object ["ok" .= False, "errors" .= errMap]
+    formatValError errMap = object ["errors" .= errMap]
