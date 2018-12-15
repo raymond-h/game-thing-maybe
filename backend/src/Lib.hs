@@ -39,7 +39,8 @@ listOfPairsToObject :: [(String, String)] -> Value
 listOfPairsToObject = object . (map $ uncurry (.=)) . over (mapped._1) T.pack
 
 frontendCorsResourcePolicy frontendOrigin = simpleCorsResourcePolicy {
-  corsOrigins = Just ([BS.pack frontendOrigin], True)
+  corsOrigins = Just ([BS.pack frontendOrigin], True),
+  corsRequestHeaders = ["Authorization"]
 }
 
 devCorsResourcePolicy = simpleCorsResourcePolicy {
