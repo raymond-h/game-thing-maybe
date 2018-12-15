@@ -10,8 +10,13 @@ import Control.Lens hiding ((.=))
 import Control.Concurrent.MVar
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Char8 as BS
 import Network.Wreq as W
+import Network.Wreq.Types (Postable)
+
+patchWith :: Postable a => W.Options -> String -> a -> IO (Response LBS.ByteString)
+patchWith = customPayloadMethodWith "PATCH"
 
 baseApiUrl :: Auth0Config -> String
 baseApiUrl auth0Config = "https://" <> (T.unpack $ domain auth0Config) <> "/api/v2"
@@ -69,6 +74,14 @@ getUserInfo userId auth0Config = do
   let opts = defaults & addAuth0 auth0Config
 
   res <- asJSON =<< getWith opts (baseApiUrl auth0Config <> "/users/" <> T.unpack userId)
+
+  return $ res^.responseBody
+
+updateUserInfo :: T.Text -> Value -> Auth0Config -> IO UserInfo
+updateUserInfo userId userData auth0Config = do
+  let opts = defaults & addAuth0 auth0Config
+
+  res <- asJSON =<< patchWith opts (baseApiUrl auth0Config <> "/users/" <> T.unpack userId) userData
 
   return $ res^.responseBody
 

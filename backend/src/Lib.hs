@@ -1,8 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Lib where
 
+import GHC.Generics
 import Data.Aeson
 import Network.Wai (Application)
 import Network.Wai.Middleware.RequestLogger
@@ -14,13 +16,17 @@ import Data.Maybe
 import Text.Read (readMaybe)
 import Control.Lens hiding ((.=))
 import Control.Monad.Trans (liftIO, MonadIO)
-import Control.Concurrent.STM
+import Control.Concurrent.STM hiding (check)
+import Control.Monad
+import Data.Either.Validation
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as LT
 import qualified Web.Scotty as S
 
 import Auth
+import Validation as V
 import qualified AppState as AS
 import qualified Auth0Management as A0M
 
@@ -59,6 +65,28 @@ authenticate appState jwtValidationSettings jwkSet = do
   let userId = T.pack $ view (claimSub._Just.string) claimsSet
 
   atomically' $ stateTVar appState (AS.ensureUser userId)
+
+data UserInfoBody = UserInfoBody {
+  displayName :: Maybe T.Text
+} deriving (Eq, Show, Generic)
+
+instance FromJSON UserInfoBody where
+instance ToJSON UserInfoBody where
+
+isAlphanumeric :: T.Text -> Bool
+isAlphanumeric = T.all alphanum
+  where
+    alphanum c = c `elem` ['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9']
+
+validateUserInfo :: UserInfoBody -> Validation [(T.Text, T.Text)] UserInfoBody
+validateUserInfo userInfo = displayNameValidation *> pure userInfo
+  where
+    displayNameValidation = case displayName userInfo of
+      Nothing -> pure ()
+      Just un ->
+        (T.length un >= 2) `check` ("displayName", "Display name too short") *>
+        (T.length un <= 10) `check` ("displayName", "Display name too long") *>
+        (isAlphanumeric un) `check` ("displayName", "Display name must only contain alphanumerical symbols")
 
 runApp :: IO ()
 runApp = do
@@ -110,8 +138,21 @@ runApp = do
 
     S.get "/me" $ do
       userId <- auth
-      info <- liftIO $ A0M.getUserInfo userId a0Config
-      S.json info
+      S.json userId
+
+    S.put "/user-info" $ do
+      userId <- auth
+      userInfo <- handleValidation . validateUserInfo =<< S.jsonData
+
+      let newMetadata :: M.Map T.Text Value =
+            M.empty
+              & at "displayName" .~ (String <$> displayName userInfo)
+
+      unless (M.null newMetadata) $ do
+        liftIO $ A0M.updateUserInfo userId (object ["user_metadata" .= newMetadata]) a0Config
+        return ()
+
+      S.json $ object ["ok" .= True]
 
     S.get "/users" $ do
       appStateData <- liftIO $ readTVarIO appState
