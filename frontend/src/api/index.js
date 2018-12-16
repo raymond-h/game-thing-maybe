@@ -19,3 +19,17 @@ const apiUrl = process.env.API_URL.replace(/{hostname}/g, location.hostname);
 export function someJson() {
   return fetchJsonObs(apiUrl + '/some-json');
 }
+
+export function getUserInfo() {
+  return fetchJsonObs(apiUrl + '/user-info');
+}
+
+export function updateUserInfo(newUserInfo) {
+  return fetchJsonObs(apiUrl + '/user-info', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8'
+    },
+    body: JSON.stringify(newUserInfo)
+  });
+}

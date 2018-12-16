@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module Lib where
 
@@ -31,6 +30,8 @@ import Validation as V
 import qualified AppState as AS
 import qualified Auth0Management as A0M
 
+import Service.UserInfo
+
 getEnv' :: Read r => String -> IO (Maybe r)
 getEnv' var = do
   mVal <- lookupEnv var
@@ -41,13 +42,14 @@ listOfPairsToObject = object . (map $ uncurry (.=)) . over (mapped._1) T.pack
 
 frontendCorsResourcePolicy frontendOrigin = simpleCorsResourcePolicy {
   corsOrigins = Just ([BS.pack frontendOrigin], True),
-  corsRequestHeaders = ["Authorization"]
+  corsMethods = ["PUT"],
+  corsRequestHeaders = ["Authorization", "Content-Type"]
 }
 
 devCorsResourcePolicy = simpleCorsResourcePolicy {
   corsOrigins = Nothing,
-  corsMethods = simpleMethods,
-  corsRequestHeaders = ["Authorization"]
+  corsMethods = ["PUT"],
+  corsRequestHeaders = ["Authorization", "Content-Type"]
 }
 
 stateTVar :: TVar s -> (s -> (a, s)) -> STM a
@@ -67,28 +69,6 @@ authenticate appState jwtValidationSettings jwkSet = do
   let userId = T.pack $ view (claimSub._Just.string) claimsSet
 
   atomically' $ stateTVar appState (AS.ensureUser userId)
-
-data UserInfoBody = UserInfoBody {
-  displayName :: Maybe T.Text
-} deriving (Eq, Show, Generic)
-
-instance FromJSON UserInfoBody where
-instance ToJSON UserInfoBody where
-
-isAlphanumeric :: T.Text -> Bool
-isAlphanumeric = T.all alphanum
-  where
-    alphanum c = c `elem` ['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9']
-
-validateUserInfo :: UserInfoBody -> Validation [(T.Text, T.Text)] UserInfoBody
-validateUserInfo userInfo = displayNameValidation *> pure userInfo
-  where
-    displayNameValidation = case displayName userInfo of
-      Nothing -> pure ()
-      Just un ->
-        (T.length un >= 2) `check` ("displayName", "Display name too short") *>
-        (T.length un <= 10) `check` ("displayName", "Display name too long") *>
-        (isAlphanumeric un) `check` ("displayName", "Display name must only contain alphanumerical symbols")
 
 runApp :: IO ()
 runApp = do
@@ -142,19 +122,16 @@ runApp = do
       userId <- auth
       S.json userId
 
+    S.get "/user-info" $ do
+      userId <- auth
+      userInfo <- liftIO $ getUserInfo a0Config userId
+      S.json userInfo
+
     S.put "/user-info" $ do
       userId <- auth
-      userInfo <- handleValidation . validateUserInfo =<< S.jsonData
-
-      let newMetadata :: M.Map T.Text Value =
-            M.empty
-              & at "displayName" .~ (String <$> displayName userInfo)
-
-      userProfile <- liftIO $ if (not $ M.null newMetadata)
-        then A0M.updateUserInfo userId (object ["user_metadata" .= newMetadata]) a0Config
-        else A0M.getUserInfo userId a0Config
-
-      S.json $ object ["displayName" .= (userProfile ^. key "user_metadata" . key "displayName" . _String)]
+      userInfo <- handleValidation . validateUserInfoBody =<< S.jsonData
+      newUserInfo <- liftIO $ updateUserInfo a0Config userId userInfo
+      S.json newUserInfo
 
     S.get "/users" $ do
       appStateData <- liftIO $ readTVarIO appState

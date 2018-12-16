@@ -45,7 +45,7 @@ export default {
     title() {
       if(this.userInfo == null) return 'hello world';
 
-      return `hello ${this.userInfo.nickname}!!`;
+      return `hello ${this.userInfo.displayName}!!`;
     }
   },
 

@@ -1,6 +1,7 @@
 import auth0 from 'auth0-js';
+import * as api from './index';
 import * as rxjs from 'rxjs';
-import { tap, map, filter, switchMap, distinctUntilChanged, share } from 'rxjs/operators';
+import { tap, map, filter, switchMap, distinctUntilChanged, multicast, refCount } from 'rxjs/operators';
 
 import jwtDecode from 'jwt-decode';
 
@@ -21,17 +22,18 @@ export class AuthService {
       .pipe(
         distinctUntilChanged(),
         filter(isAuth => isAuth),
-        map(() => this.accessToken),
-        switchMap(accessToken =>
-          rxjs.bindNodeCallback(cb => this._auth0.client.userInfo(accessToken, cb))()
+        switchMap(() =>
+          api.getUserInfo()
         ),
-        share()
+        multicast(() => new rxjs.BehaviorSubject(null)),
+        refCount()
       );
 
     this.idTokenInfo$ = this.isAuthenticated$
       .pipe(
         map(() => this.idTokenInfo),
-        share()
+        multicast(() => new rxjs.BehaviorSubject(null)),
+        refCount()
       );
   }
 
