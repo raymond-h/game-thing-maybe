@@ -68,7 +68,7 @@ authenticate appState jwtValidationSettings jwkSet = do
 
   let userId = T.pack $ view (claimSub._Just.string) claimsSet
 
-  atomically' $ stateTVar appState (AS.ensureUser userId)
+  return userId
 
 runApp :: IO ()
 runApp = do
@@ -97,6 +97,12 @@ runApp = do
         & allowedSkew .~ 30 * 60
 
     auth = authenticate appState jwtValidationSettings jwkSet
+
+    queryState :: MonadIO m => (AS.AppState -> a) -> m a
+    queryState f = liftIO $ f <$> readTVarIO appState
+
+    modifyState :: MonadIO m => (AS.AppState -> (a, AS.AppState)) -> m a
+    modifyState f = atomically' $ stateTVar appState f
 
   S.scotty port $ do
     S.middleware $ if isDev then logStdoutDev else logStdout
@@ -133,6 +139,15 @@ runApp = do
       newUserInfo <- liftIO $ updateUserInfo a0Config userId userInfo
       S.json newUserInfo
 
-    S.get "/users" $ do
-      appStateData <- liftIO $ readTVarIO appState
-      S.text $ LT.pack $ show appStateData
+    S.get "/invites" $ do
+      userId <- auth
+      invites <- queryState $ AS.findInvitesForUser userId
+      S.json invites
+
+    S.post "/invites" $ do
+      userId <- auth
+      invite <- S.jsonData
+      guard $ (invite ^. AS.player1) == userId
+      inviteToReturn <- modifyState $ AS.addInvite invite
+      S.json inviteToReturn
+
