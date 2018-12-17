@@ -19,6 +19,7 @@ import Control.Monad.Trans (liftIO, MonadIO)
 import Control.Concurrent.STM hiding (check)
 import Control.Monad
 import Data.Either.Validation
+import Network.HTTP.Types
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
@@ -69,6 +70,11 @@ authenticate appState jwtValidationSettings jwkSet = do
   let userId = T.pack $ view (claimSub._Just.string) claimsSet
 
   return userId
+
+checkError cond status errMsg = unless cond $ do
+  S.status status
+  S.json $ object ["error" .= errMsg]
+  S.finish
 
 runApp :: IO ()
 runApp = do
@@ -146,8 +152,26 @@ runApp = do
 
     S.post "/invites" $ do
       userId <- auth
-      invite <- S.jsonData
-      guard $ (invite ^. AS.player1) == userId
+      (inviteJson :: Value) <- S.jsonData
+
+      let otherUserEmailOrId = inviteJson ^? key "userId" . _String
+
+      checkError (isJust otherUserEmailOrId) badRequest400 (String "Field 'userId' missing")
+
+      hits <- liftIO
+        $ A0M.searchUsersV3 (
+          T.concat ["email:\"", fromJust otherUserEmailOrId, "\" OR user_id:\"", fromJust otherUserEmailOrId, "\""]
+        ) a0Config
+
+      checkError (length hits > 0) badRequest400 (String "No such user")
+      checkError (length hits < 2) badRequest400 (String "Too many users with same e-mail")
+
+      let otherUserId = hits ^. ix 0 . key "user_id" . _String
+
+      checkError (userId /= otherUserId) badRequest400 (String "Can't send invite to yourself")
+
+      let invite = AS.Invite { AS._player1 = userId, AS._player2 = otherUserId }
+
       inviteToReturn <- modifyState $ AS.addInvite invite
       S.json inviteToReturn
 
