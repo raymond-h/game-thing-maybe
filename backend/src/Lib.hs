@@ -82,7 +82,10 @@ runApp = do
   isDev <- fromMaybe False <$> getEnv' "DEV"
   print ("Dev?", isDev)
 
-  corsResPolicy <- frontendCorsResourcePolicy <$> getEnv "FRONTEND_ORIGIN"
+  corsResPolicy <- if isDev
+    then return devCorsResourcePolicy
+    else frontendCorsResourcePolicy <$> getEnv "FRONTEND_ORIGIN"
+
   (Just audience) <- preview stringOrUri <$> getEnv "JWT_AUDIENCE"
   (Just issuer) <- preview stringOrUri <$> getEnv "JWT_ISSUER"
 
@@ -113,8 +116,7 @@ runApp = do
   S.scotty port $ do
     S.middleware $ if isDev then logStdoutDev else logStdout
 
-    S.middleware $ cors . const . Just $
-      if isDev then devCorsResourcePolicy else corsResPolicy
+    S.middleware . cors . const . Just $ corsResPolicy
 
     S.get "/" $ do
       S.text "hello"
