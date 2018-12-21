@@ -28,6 +28,7 @@ import qualified Web.Scotty as S
 
 import Auth
 import Validation as V
+import Util (queryTVar, modifyTVarState)
 import qualified AppState as AS
 import qualified Auth0Management as A0M
 
@@ -53,21 +54,12 @@ devCorsResourcePolicy = simpleCorsResourcePolicy {
   corsRequestHeaders = ["Authorization", "Content-Type"]
 }
 
-stateTVar :: TVar s -> (s -> (a, s)) -> STM a
-stateTVar var f = do
-  s <- readTVar var
-  let (a, s') = f s
-  writeTVar var s'
-  return a
-{-# INLINE stateTVar #-}
-
-atomically' :: MonadIO m => STM a -> m a
-atomically' = liftIO . atomically
-
 authenticate appState jwtValidationSettings jwkSet = do
   (_, claimsSet) <- verifyJWT jwtValidationSettings jwkSet
 
   let userId = T.pack $ view (claimSub._Just.string) claimsSet
+
+  modifyTVarState appState $ AS.ensureUser userId
 
   return userId
 
@@ -108,10 +100,9 @@ runApp = do
     auth = authenticate appState jwtValidationSettings jwkSet
 
     queryState :: MonadIO m => (AS.AppState -> a) -> m a
-    queryState f = liftIO $ f <$> readTVarIO appState
-
+    queryState = queryTVar appState
     modifyState :: MonadIO m => (AS.AppState -> (a, AS.AppState)) -> m a
-    modifyState f = atomically' $ stateTVar appState f
+    modifyState = modifyTVarState appState
 
   S.scotty port $ do
     S.middleware $ if isDev then logStdoutDev else logStdout
@@ -138,13 +129,13 @@ runApp = do
 
     S.get "/user-info" $ do
       userId <- auth
-      userInfo <- liftIO $ getUserInfo a0Config userId
+      userInfo <- getUserInfo appState userId
       S.json userInfo
 
     S.put "/user-info" $ do
       userId <- auth
       userInfo <- handleValidation . validateUserInfoBody =<< S.jsonData
-      newUserInfo <- liftIO $ updateUserInfo a0Config userId userInfo
+      newUserInfo <- updateUserInfo appState userId userInfo
       S.json newUserInfo
 
     S.get "/invites" $ do

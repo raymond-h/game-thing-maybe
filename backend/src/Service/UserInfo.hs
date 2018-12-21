@@ -8,12 +8,18 @@ import Data.Aeson
 import Data.Aeson.Lens
 import Control.Lens hiding ((.=))
 import Data.Either.Validation
+import Data.Maybe (fromJust, isJust)
+import Control.Monad.Trans (liftIO, MonadIO)
+import Control.Concurrent.STM hiding (check)
+import Control.Monad (guard)
 import qualified Data.Text as T
 import qualified Data.Map.Strict as M
 
 import AppState (UserId)
+import qualified AppState as AS
 import Validation as V
 import qualified Auth0Management as A0M
+import Util (queryTVar, modifyTVarState)
 
 data UserInfoBody = UserInfoBody {
   displayName :: Maybe T.Text
@@ -37,26 +43,23 @@ validateUserInfoBody userInfo = displayNameValidation *> pure userInfo
         (T.length un <= 10) `check` ("displayName", "Display name too long") *>
         (isAlphanumeric un) `check` ("displayName", "Display name must only contain alphanumerical symbols")
 
-getUserInfo :: A0M.Auth0Config -> UserId -> IO UserInfoBody
-getUserInfo a0Config userId = do
-  userProfile <- A0M.getUserInfo userId a0Config
+getUserInfo :: MonadIO m => TVar AS.AppState -> UserId -> m UserInfoBody
+getUserInfo appState userId = do
+  userProfile <- queryTVar appState $ fromJust . AS.getUserById userId
 
   return $ UserInfoBody {
-    displayName = (userProfile ^? key "user_metadata" . key "displayName" . _String)
+    displayName = userProfile ^. AS.username
   }
 
-updateUserInfo :: A0M.Auth0Config -> UserId -> UserInfoBody -> IO UserInfoBody
-updateUserInfo a0Config userId newUserInfo = do
-  let
-    newMetadata :: M.Map T.Text Value
-    newMetadata =
-        M.empty
-          & at "displayName" .~ (String <$> displayName newUserInfo)
+updateUserInfo :: MonadIO m => TVar AS.AppState -> UserId -> UserInfoBody -> m UserInfoBody
+updateUserInfo appState userId newUserInfo = do
+  hasUser <- queryTVar appState $ AS.hasUser userId
+  liftIO $ guard $ hasUser
 
-  userProfile <- if (not $ M.null newMetadata)
-    then A0M.updateUserInfo userId (object ["user_metadata" .= newMetadata]) a0Config
-    else A0M.getUserInfo userId a0Config
+  userProfile <- case displayName newUserInfo of
+    Nothing -> queryTVar appState $ fromJust . AS.getUserById userId
+    Just newDisplayName -> modifyTVarState appState $ AS.setUserUsername userId newDisplayName
 
   return $ UserInfoBody {
-    displayName = (userProfile ^? key "user_metadata" . key "displayName" . _String)
+    displayName = userProfile ^. AS.username
   }

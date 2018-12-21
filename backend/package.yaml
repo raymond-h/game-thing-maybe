@@ -41,6 +41,8 @@ dependencies:
 - base16-bytestring
 - wai-cors
 - either
+- hspec
+- QuickCheck
 
 library:
   source-dirs: src
