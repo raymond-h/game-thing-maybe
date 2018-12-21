@@ -43,23 +43,20 @@ validateUserInfoBody userInfo = displayNameValidation *> pure userInfo
         (T.length un <= 10) `check` ("displayName", "Display name too long") *>
         (isAlphanumeric un) `check` ("displayName", "Display name must only contain alphanumerical symbols")
 
-getUserInfo :: MonadIO m => TVar AS.AppState -> UserId -> m UserInfoBody
+getUserInfo :: MonadIO m => TVar AS.AppState -> UserId -> m (Either T.Text UserInfoBody)
 getUserInfo appState userId = do
-  userProfile <- queryTVar appState $ fromJust . AS.getUserById userId
+  mUserProfile <- queryTVar appState $ AS.getUserById userId
 
-  return $ UserInfoBody {
-    displayName = userProfile ^. AS.username
-  }
+  return $ case mUserProfile of
+    Nothing -> Left $ "User '" <> userId <> "' does not exist"
+    Just userProfile -> Right $ UserInfoBody { displayName = userProfile ^. AS.username }
 
-updateUserInfo :: MonadIO m => TVar AS.AppState -> UserId -> UserInfoBody -> m UserInfoBody
+updateUserInfo :: MonadIO m => TVar AS.AppState -> UserId -> UserInfoBody -> m (Either T.Text UserInfoBody)
 updateUserInfo appState userId newUserInfo = do
-  hasUser <- queryTVar appState $ AS.hasUser userId
-  liftIO $ guard $ hasUser
-
-  userProfile <- case displayName newUserInfo of
-    Nothing -> queryTVar appState $ fromJust . AS.getUserById userId
+  mUserProfile <- case displayName newUserInfo of
+    Nothing -> queryTVar appState $ AS.getUserById userId
     Just newDisplayName -> modifyTVarState appState $ AS.setUserUsername userId newDisplayName
 
-  return $ UserInfoBody {
-    displayName = userProfile ^. AS.username
-  }
+  return $ case mUserProfile of
+    Nothing -> Left $ "User '" <> userId <> "' does not exist"
+    Just userProfile -> Right $ UserInfoBody { displayName = userProfile ^. AS.username }

@@ -9,6 +9,7 @@ module AppState where
 import Control.Lens hiding ((.=))
 import Data.Maybe
 import Data.Aeson
+import Data.Bifunctor (first)
 import Data.List (find)
 import qualified Data.Text as T
 import qualified Data.ByteString as BS
@@ -54,8 +55,18 @@ data AppState = AppState {
 
 makeLenses ''AppState
 
-userById :: UserId -> Traversal' AppState User
-userById userId' = users . traversed . filtered (\u -> u^.userId == userId')
+userById :: UserId -> Lens' AppState (Maybe User)
+userById userId' = lens getter setter
+  where
+    getter appState = find isUser (appState^.users)
+
+    setter appState Nothing = appState & users %~ filter (not . isUser)
+    setter appState (Just newUser) =
+      if hasUser userId' appState
+        then appState & users . traverse %~ (\u -> if isUser u then newUser else u)
+        else appState & users %~ (newUser:)
+
+    isUser u = u^.userId == userId'
 
 initialAppState :: AppState
 initialAppState = AppState { _users = [], _invites = [] }
@@ -77,12 +88,12 @@ ensureUser userId = runState $ do
 
 modifyUser :: UserId -> (User -> User) -> AppState -> (User, AppState)
 modifyUser userId userFn = runState $ do
-  userById userId %= userFn
+  userById userId . traverse %= userFn
 
-  fromJust <$> (preuse $ userById userId)
+  fromJust <$> (preuse $ userById userId . traverse)
 
-setUserUsername :: UserId -> T.Text -> AppState -> (User, AppState)
-setUserUsername userId' newUsername = modifyUser userId' (username ?~ newUsername)
+setUserUsername :: UserId -> T.Text -> AppState -> (Maybe User, AppState)
+setUserUsername userId newUsername = userById userId <%~ _Just . username ?~ newUsername
 
 addInvite :: Invite -> AppState -> (Invite, AppState)
 addInvite inv = runState $ do

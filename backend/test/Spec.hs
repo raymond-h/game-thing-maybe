@@ -11,22 +11,30 @@ main = hspec $ do
   describe "AppState" $ do
     describe "userById lens" $ do
       it "allows getting" $ do
-        let (user, appState) = AS.ensureUser "hello" AS.initialAppState
+        let (user, appState) = ensureUser "hello" initialAppState
 
-        (appState ^? AS.userById "hello") `shouldBe` Just user
+        appState ^. userById "hello" `shouldBe` Just user
 
-      it "allows setting" $ do
+      it "allows setting to Just user" $ do
         let
-          (_, appState) = AS.ensureUser "hello" AS.initialAppState
+          appState = initialAppState
           newUser = User { _userId = "hello", _username = Just "Hello-Person" }
-          updatedAppState = appState & AS.userById "hello" .~ newUser
+          updatedAppState = appState & userById "hello" .~ Just newUser
 
-        (updatedAppState ^? AS.userById "hello") `shouldBe` Just newUser
+        _users updatedAppState `shouldBe` [newUser]
 
-      it "allows updating" $ do
+      it "allows setting to Nothing" $ do
         let
-          (_, appState) = AS.ensureUser "hello" AS.initialAppState
-          newUser = User { _userId = "hello", _username = Just "Hello-Person" }
-          updatedAppState = appState & AS.userById "hello" %~ (AS.username ?~ "Hello-Person")
+          (_, appState) = ensureUser "hello" initialAppState
+          updatedAppState = appState & userById "hello" .~ Nothing
 
-        (updatedAppState ^? AS.userById "hello") `shouldBe` Just newUser
+        _users updatedAppState `shouldBe` []
+
+      it "allows modifying existing user" $ do
+        let
+          (_, appState) = ensureUser "hello" initialAppState
+          updatedAppState = appState & userById "hello" . traverse . username .~ Just "Banana"
+
+        appState ^. users . ix 0 . username `shouldBe` Nothing
+        updatedAppState ^. users . ix 0 . username `shouldBe` Just "Banana"
+

@@ -135,8 +135,13 @@ runApp = do
     S.put "/user-info" $ do
       userId <- auth
       userInfo <- handleValidation . validateUserInfoBody =<< S.jsonData
-      newUserInfo <- updateUserInfo appState userId userInfo
-      S.json newUserInfo
+      result <- updateUserInfo appState userId userInfo
+      case result of
+        Left errMsg -> do
+          S.status badRequest400
+          S.json $ object ["error" .= errMsg]
+        Right newUserInfo ->
+          S.json newUserInfo
 
     S.get "/invites" $ do
       userId <- auth
