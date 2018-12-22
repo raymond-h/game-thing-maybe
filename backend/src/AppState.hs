@@ -55,18 +55,26 @@ data AppState = AppState {
 
 makeLenses ''AppState
 
-userById :: UserId -> Lens' AppState (Maybe User)
-userById userId' = lens getter setter
+predicateToAtLike :: Lens' s [a] -> (a -> Bool) -> Lens' s (Maybe a)
+predicateToAtLike l pred = lens getter setter
   where
-    getter appState = find isUser (appState^.users)
+    getter val = find pred (val ^. l)
 
-    setter appState Nothing = appState & users %~ filter (not . isUser)
-    setter appState (Just newUser) =
-      if hasUser userId' appState
-        then appState & users . traverse %~ (\u -> if isUser u then newUser else u)
-        else appState & users %~ (newUser:)
+    setter val Nothing = val & l %~ filter (not . pred)
+    setter val (Just newSubval) =
+      if any pred (val ^. l)
+        then val & l . traverse %~ (\v -> if pred v then newSubval else v)
+        else val & l %~ (newSubval:)
 
+userById :: UserId -> Lens' AppState (Maybe User)
+userById userId' = predicateToAtLike users isUser
+  where
     isUser u = u^.userId == userId'
+
+userByUsername :: UserId -> Lens' AppState (Maybe User)
+userByUsername username' = predicateToAtLike users isUser
+  where
+    isUser u = u^.username == Just username'
 
 initialAppState :: AppState
 initialAppState = AppState { _users = [], _invites = [] }
@@ -95,13 +103,8 @@ modifyUser userId userFn = runState $ do
 setUserUsername :: UserId -> T.Text -> AppState -> (Maybe User, AppState)
 setUserUsername userId newUsername = userById userId <%~ _Just . username ?~ newUsername
 
-addInvite :: Invite -> AppState -> (Invite, AppState)
-addInvite inv = runState $ do
-  invites %= (++[inv])
-  return inv
+addInvite :: Invite -> AppState -> AppState
+addInvite inv = invites %~ (++[inv])
 
 findInvitesForUser :: UserId -> AppState -> [Invite]
 findInvitesForUser userId appState = filter (inviteBelongsToUser userId) (appState ^. invites)
-
-type AppStateQuery m a = (AppState -> a) -> m a
-type AppStateModify m a = (AppState -> (a, AppState)) -> m a

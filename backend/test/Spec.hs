@@ -37,4 +37,3 @@ main = hspec $ do
 
         appState ^. users . ix 0 . username `shouldBe` Nothing
         updatedAppState ^. users . ix 0 . username `shouldBe` Just "Banana"
-
