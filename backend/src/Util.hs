@@ -39,3 +39,9 @@ sendErrorAndFinish status errMsg = do
   S.status status
   S.json $ object ["error" .= errMsg]
   S.finish
+
+adjustMatching :: (a -> Bool) -> (Maybe a -> Maybe a) -> [a] -> [a]
+adjustMatching _ f [] = maybe [] pure $ f Nothing
+adjustMatching pred f (a:as)
+  | pred a = maybe as (:as) $ f (Just a)
+  | otherwise = a:(adjustMatching pred f as)

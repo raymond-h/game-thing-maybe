@@ -16,6 +16,8 @@ import qualified Data.ByteString as BS
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 
+import Util (adjustMatching)
+
 type UserId = T.Text
 
 data User = User {
@@ -55,24 +57,19 @@ data AppState = AppState {
 
 makeLenses ''AppState
 
-predicateToAtLike :: Lens' s [a] -> (a -> Bool) -> Lens' s (Maybe a)
-predicateToAtLike l pred = lens getter setter
+predicateToAtLike :: (a -> Bool) -> Lens' [a] (Maybe a)
+predicateToAtLike pred = lens getter setter
   where
-    getter val = find pred (val ^. l)
-
-    setter val Nothing = val & l %~ filter (not . pred)
-    setter val (Just newSubval) =
-      if any pred (val ^. l)
-        then val & l . traverse %~ (\v -> if pred v then newSubval else v)
-        else val & l %~ (newSubval:)
+    getter = find pred
+    setter val mNewVal = adjustMatching pred (const mNewVal) val
 
 userById :: UserId -> Lens' AppState (Maybe User)
-userById userId' = predicateToAtLike users isUser
+userById userId' = users . predicateToAtLike isUser
   where
     isUser u = u^.userId == userId'
 
 userByUsername :: UserId -> Lens' AppState (Maybe User)
-userByUsername username' = predicateToAtLike users isUser
+userByUsername username' = users . predicateToAtLike isUser
   where
     isUser u = u^.username == Just username'
 
