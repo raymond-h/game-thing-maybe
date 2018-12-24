@@ -8,6 +8,7 @@ import Test.QuickCheck
 import Test.QuickCheck.Poly
 import Data.Monoid
 import Data.Foldable
+import Data.Functor (($>))
 
 import AppState as AS
 import Util (adjustMatching)
@@ -25,7 +26,7 @@ main = hspec $ do
         let
           appState = initialAppState
           newUser = User { _userId = "hello", _username = Just "Hello-Person" }
-          updatedAppState = appState & userById "hello" .~ Just newUser
+          updatedAppState = appState & userById "hello" ?~ newUser
 
         _users updatedAppState `shouldBe` [newUser]
 
@@ -39,7 +40,7 @@ main = hspec $ do
       it "allows modifying existing user" $ do
         let
           (_, appState) = ensureUser "hello" initialAppState
-          updatedAppState = appState & userById "hello" . traverse . username .~ Just "Banana"
+          updatedAppState = appState & userById "hello" . traverse . username ?~ "Banana"
 
         appState ^. users . ix 0 . username `shouldBe` Nothing
         updatedAppState ^. users . ix 0 . username `shouldBe` Just "Banana"
@@ -57,3 +58,4 @@ main = hspec $ do
 
       prop "causes no difference if predicate matches no element and function returns Nothing" $
         \(xs :: [A]) -> adjustMatching (const False) (\Nothing -> Nothing) xs `shouldBe` xs
+

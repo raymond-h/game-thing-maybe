@@ -41,7 +41,7 @@ getEnv' var = do
   return $ mVal >>= readMaybe
 
 listOfPairsToObject :: [(String, String)] -> Value
-listOfPairsToObject = object . (map $ uncurry (.=)) . over (mapped._1) T.pack
+listOfPairsToObject = object . map (uncurry (.=)) . over (mapped._1) T.pack
 
 frontendCorsResourcePolicy frontendOrigin = simpleCorsResourcePolicy {
   corsOrigins = Just ([BS.pack frontendOrigin], True),
@@ -117,7 +117,7 @@ runApp = do
 
     S.get "/auth" $ do
       userId <- view AS.userId <$> auth
-      S.text $ "gj on the authenticating: " <> (LT.pack $ show userId)
+      S.text $ "gj on the authenticating: " <> LT.pack (show userId)
 
     S.get "/me" $ do
       userId <- view AS.userId <$> auth
