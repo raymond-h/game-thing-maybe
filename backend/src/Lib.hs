@@ -7,6 +7,7 @@ import GHC.Generics
 import Data.Aeson
 import Data.Aeson.Lens
 import Network.Wai (Application)
+import Network.Wai.Handler.Warp (runEnv)
 import Network.Wai.Middleware.RequestLogger
 import Network.Wai.Middleware.Cors
 import System.Environment
@@ -69,27 +70,40 @@ checkError cond status errMsg = unless cond $ do
   S.json $ object ["error" .= errMsg]
   S.finish
 
+data Environment = Production | Development | Test deriving (Eq, Show)
+
 runApp :: IO ()
 runApp = do
-  port <- fromMaybe 8080 <$> getEnv' "PORT"
   isDev <- fromMaybe False <$> getEnv' "DEV"
-  print ("Dev?", isDev)
+  appState <- newTVarIO AS.initialAppState
+  app <- createApp (if isDev then Development else Production) appState
+  runEnv 8080 app
 
-  corsResPolicy <- if isDev
-    then return devCorsResourcePolicy
-    else frontendCorsResourcePolicy <$> getEnv "FRONTEND_ORIGIN"
+createApp :: Environment -> TVar AS.AppState -> IO Application
+createApp environment appState = do
+  let isDev = environment == Development
+  let isTest = environment == Test
+  unless isTest $ print ("Dev?", isDev)
+
+  corsResPolicy <- if environment == Production
+    then frontendCorsResourcePolicy <$> getEnv "FRONTEND_ORIGIN"
+    else return devCorsResourcePolicy
 
   (Just audience) <- preview stringOrUri <$> getEnv "JWT_AUDIENCE"
   (Just issuer) <- preview stringOrUri <$> getEnv "JWT_ISSUER"
 
-  (Right jwkSet) <- fetchJWKSet =<< getEnv "AUTH0_DOMAIN"
+  mJwkSetOrError <- if environment == Test
+    then return Nothing
+    else do
+      mDomain <- lookupEnv "AUTH0_DOMAIN"
+      case mDomain of
+        Nothing -> return Nothing
+        Just domain -> Just <$> fetchJWKSet domain
 
-  domain <- T.pack <$> getEnv "AUTH0_DOMAIN"
-  clientId <- T.pack <$> getEnv "AUTH0_CLIENT_ID"
-  clientSecret <- T.pack <$> getEnv "AUTH0_CLIENT_SECRET"
-  a0Config <- A0M.getConfig domain clientId clientSecret
-
-  appState <- newTVarIO AS.initialAppState
+  -- domain <- T.pack <$> getEnv "AUTH0_DOMAIN"
+  -- clientId <- T.pack <$> getEnv "AUTH0_CLIENT_ID"
+  -- clientSecret <- T.pack <$> getEnv "AUTH0_CLIENT_SECRET"
+  -- a0Config <- A0M.getConfig domain clientId clientSecret
 
   let
     jwtValidationSettings =
@@ -98,10 +112,19 @@ runApp = do
         & issuerPredicate .~ (==issuer)
         & allowedSkew .~ 30 * 60
 
-    auth = authenticate appState jwtValidationSettings jwkSet
+    auth = case mJwkSetOrError of
+      Nothing -> do
+        guard isTest
+        mAuth <- S.header "Authorization"
+        case mAuth of
+          Nothing -> S.status status401 >> S.finish
+          Just user -> return . AS.testAuth . LT.toStrict $ user
 
-  S.scotty port $ do
-    S.middleware $ if isDev then logStdoutDev else logStdout
+      Just (Right jwkSet) -> authenticate appState jwtValidationSettings jwkSet
+
+  S.scottyApp $ do
+    unless isTest $
+      S.middleware $ if isDev then logStdoutDev else logStdout
 
     S.middleware . cors . const . Just $ corsResPolicy
 

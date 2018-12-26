@@ -16,7 +16,8 @@ import Web.Scotty as S
 import qualified Data.Text as T
 
 import AppState as AS
-import Util (stateTVar, sendErrorAndFinish)
+import AuthUtil (requireUsername)
+import Util (stateTVar, sendErrorAndFinish, guardError)
 
 data InviteBody =
   InviteBodyUserId UserId |
@@ -31,13 +32,14 @@ instance FromJSON InviteBody where
 
 getInvites :: ActionM User -> TVar AppState -> ActionM ()
 getInvites auth appState = do
-  userId <- view AS.userId <$> auth
+  userId <- view AS.userId <$> (requireUsername =<< auth)
   invites <- AS.findInvitesForUser userId <$> (liftIO . readTVarIO) appState
   S.json invites
 
 createInvite :: ActionM User -> TVar AppState -> ActionM ()
 createInvite auth appStateTVar = do
-  userId' <- view AS.userId <$> auth
+  user <- requireUsername =<< auth
+  let userId' = user ^. userId
 
   let
     lensFrom (InviteBodyUserId uId) = userById uId
@@ -45,7 +47,7 @@ createInvite auth appStateTVar = do
 
   otherUserLens <- lensFrom <$> S.jsonData
 
-  action <- liftIO . atomically $ do
+  join $ liftIO . atomically $ do
     appState <- readTVar appStateTVar
 
     case appState ^? otherUserLens . _Just . userId of
@@ -58,4 +60,3 @@ createInvite auth appStateTVar = do
 
         return $ S.json invite
 
-  action

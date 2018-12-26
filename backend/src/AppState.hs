@@ -105,3 +105,12 @@ addInvite inv = invites %~ (++[inv])
 
 findInvitesForUser :: UserId -> AppState -> [Invite]
 findInvitesForUser userId appState = filter (inviteBelongsToUser userId) (appState ^. invites)
+
+-- Test stuff
+testAppState :: AppState
+testAppState = initialAppState { _users = [testAuth "user1", testAuth "user2", testAuth "user3"] }
+
+testAuth :: T.Text -> User
+testAuth "user1" = User { _userId = "user1", _username = Nothing }
+testAuth "user2" = User { _userId = "user2", _username = Just "testuser2" }
+testAuth "user3" = User { _userId = "user3", _username = Just "anotheruser" }

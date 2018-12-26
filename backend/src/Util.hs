@@ -34,6 +34,7 @@ modifyTVarState :: MonadIO m => TVar s -> (s -> (a, s)) -> m a
 modifyTVarState tvar f = atomically' $ stateTVar tvar f
 
 checkError cond status errMsg = unless cond $ sendErrorAndFinish status errMsg
+guardError status errMsg cond = checkError cond status errMsg
 
 sendErrorAndFinish status errMsg = do
   S.status status
@@ -44,4 +45,4 @@ adjustMatching :: (a -> Bool) -> (Maybe a -> Maybe a) -> [a] -> [a]
 adjustMatching _ f [] = maybe [] pure $ f Nothing
 adjustMatching pred f (a:as)
   | pred a = maybe as (:as) $ f (Just a)
-  | otherwise = a:(adjustMatching pred f as)
+  | otherwise = a:adjustMatching pred f as

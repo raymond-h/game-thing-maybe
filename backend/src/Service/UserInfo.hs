@@ -44,6 +44,8 @@ validateUserInfoBody userInfo = displayNameValidation $> userInfo
         (T.length un <= 10) `check` ("displayName", "Display name too long") *>
         isAlphanumeric un `check` ("displayName", "Display name must only contain alphanumerical symbols")
 
+jsonInput valFn = handleValidation . valFn =<< S.jsonData
+
 getUserInfo :: ActionM User -> TVar AppState -> ActionM ()
 getUserInfo auth appStateTVar = do
   userId <- view userId <$> auth
@@ -57,7 +59,7 @@ getUserInfo auth appStateTVar = do
 updateUserInfo :: ActionM User -> TVar AppState -> ActionM ()
 updateUserInfo auth appStateTVar = do
   userId' <- view userId <$> auth
-  userInfo <- handleValidation . validateUserInfoBody =<< S.jsonData
+  userInfo <- jsonInput validateUserInfoBody
 
   mUser <- liftIO . atomically . stateTVar appStateTVar . runState $ do
     forM_ (displayName userInfo) $ \newUsername ->

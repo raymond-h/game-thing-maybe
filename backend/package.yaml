@@ -29,6 +29,7 @@ dependencies:
 - bytestring
 - wai
 - wai-extra
+- warp
 - http-types
 - scotty
 - aeson
@@ -42,6 +43,8 @@ dependencies:
 - wai-cors
 - either
 - hspec
+- hspec-wai
+- hspec-wai-json
 - QuickCheck
 
 library:
