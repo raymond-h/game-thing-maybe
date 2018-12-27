@@ -2,12 +2,14 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-import Control.Lens
+import Control.Lens hiding ((.=))
+import Data.Aeson hiding (json)
 import Test.Hspec
 import Network.HTTP.Types
 import Test.Hspec.QuickCheck (prop)
 import Test.Hspec.Wai
 import Test.Hspec.Wai.JSON
+import Test.Hspec.Wai.QuickCheck as WQC
 import Test.QuickCheck
 import Test.QuickCheck.Poly
 import Data.Monoid
@@ -15,6 +17,7 @@ import Data.Foldable
 import Data.Functor (($>))
 import System.Environment
 import Control.Concurrent.STM
+import qualified Data.Text as T
 
 import Lib (createApp, Environment(..))
 import AppState as AS
@@ -119,3 +122,23 @@ main = hspec $ do
         request methodGet "/invites" [("Authorization", "user2")] ""
           `shouldRespondWith`
           [json|[{"player1":"user2","player2":"user3"}]|] { matchStatus = 200 }
+
+    describe "/user-info" $ do
+      it "should allow getting user info when username null" $ do
+        request methodGet "/user-info" [("Authorization", "user1")] ""
+          `shouldRespondWith`
+          [json|{"username":null}|] { matchStatus = 200 }
+
+      it "should allow getting user info when username non-null" $ do
+        request methodGet "/user-info" [("Authorization", "user2")] ""
+          `shouldRespondWith`
+          [json|{"username":"testuser2"}|] { matchStatus = 200 }
+
+      it "should allow setting username" $ do
+        request methodPut "/user-info" [("Authorization", "user1"), ("Content-Type", "application/json")] "{\"username\":\"ausername\"}"
+          `shouldRespondWith`
+          [json|{"username":"ausername"}|] { matchStatus = 200 }
+
+        request methodGet "/user-info" [("Authorization", "user1")] ""
+          `shouldRespondWith`
+          [json|{"username":"ausername"}|] { matchStatus = 200 }

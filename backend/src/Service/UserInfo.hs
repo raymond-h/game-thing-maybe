@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Service.UserInfo where
@@ -23,11 +24,16 @@ import Validation as V
 import Util (stateTVar, sendErrorAndFinish)
 
 newtype UserInfoBody = UserInfoBody {
-  displayName :: Maybe T.Text
-} deriving (Eq, Show, Generic)
+  userInfoUsername :: Maybe T.Text
+} deriving (Eq, Show)
 
 instance FromJSON UserInfoBody where
+  parseJSON = withObject "user info body" $ \v ->
+    UserInfoBody
+      <$> v .:? "username"
+
 instance ToJSON UserInfoBody where
+  toJSON UserInfoBody{..} = object ["username" .= userInfoUsername]
 
 isAlphanumeric :: T.Text -> Bool
 isAlphanumeric = T.all alphanum
@@ -35,14 +41,14 @@ isAlphanumeric = T.all alphanum
     alphanum c = c `elem` ['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9']
 
 validateUserInfoBody :: UserInfoBody -> Validation [(T.Text, T.Text)] UserInfoBody
-validateUserInfoBody userInfo = displayNameValidation $> userInfo
+validateUserInfoBody userInfo = usernameValidation $> userInfo
   where
-    displayNameValidation = case displayName userInfo of
+    usernameValidation = case userInfoUsername userInfo of
       Nothing -> pure ()
       Just un ->
-        (T.length un >= 2) `check` ("displayName", "Display name too short") *>
-        (T.length un <= 10) `check` ("displayName", "Display name too long") *>
-        isAlphanumeric un `check` ("displayName", "Display name must only contain alphanumerical symbols")
+        (T.length un >= 2) `check` ("username", "Username too short") *>
+        (T.length un <= 10) `check` ("username", "Username too long") *>
+        isAlphanumeric un `check` ("username", "Username must only contain alphanumerical symbols")
 
 jsonInput valFn = handleValidation . valFn =<< S.jsonData
 
@@ -54,7 +60,7 @@ getUserInfo auth appStateTVar = do
   case mUser of
     Nothing -> sendErrorAndFinish status404 ("User '" <> userId <> "' does not exist")
 
-    Just user -> S.json $ UserInfoBody { displayName = user ^. username }
+    Just user -> S.json $ UserInfoBody { userInfoUsername = user ^. username }
 
 updateUserInfo :: ActionM User -> TVar AppState -> ActionM ()
 updateUserInfo auth appStateTVar = do
@@ -62,7 +68,7 @@ updateUserInfo auth appStateTVar = do
   userInfo <- jsonInput validateUserInfoBody
 
   mUser <- liftIO . atomically . stateTVar appStateTVar . runState $ do
-    forM_ (displayName userInfo) $ \newUsername ->
+    forM_ (userInfoUsername userInfo) $ \newUsername ->
       (userById userId' . _Just . username) `assign` Just newUsername
 
     use $ userById userId'
@@ -70,4 +76,4 @@ updateUserInfo auth appStateTVar = do
   case (mUser :: Maybe User) of
     Nothing -> sendErrorAndFinish status404 ("User '" <> userId' <> "' does not exist" :: T.Text)
 
-    Just user -> S.json $ UserInfoBody { displayName = user ^. username }
+    Just user -> S.json $ UserInfoBody { userInfoUsername = user ^. username }
