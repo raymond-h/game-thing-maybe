@@ -86,16 +86,10 @@ ensureUser :: UserId -> AppState -> (User, AppState)
 ensureUser userId = runState $ do
   hasUser' <- gets $ hasUser userId
 
-  when (not $ hasUser') $
+  unless hasUser' $
     users %= (++[initialUser userId])
 
   gets $ fromJust . getUserById userId
-
-modifyUser :: UserId -> (User -> User) -> AppState -> (User, AppState)
-modifyUser userId userFn = runState $ do
-  userById userId . traverse %= userFn
-
-  fromJust <$> (preuse $ userById userId . traverse)
 
 setUserUsername :: UserId -> T.Text -> AppState -> (Maybe User, AppState)
 setUserUsername userId newUsername = userById userId <%~ _Just . username ?~ newUsername
