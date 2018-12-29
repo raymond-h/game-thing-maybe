@@ -17,6 +17,7 @@ import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 
 import Util (adjustMatching)
+import qualified Game as G
 
 type UserId = T.Text
 
@@ -50,9 +51,27 @@ instance ToJSON Invite where
 inviteBelongsToUser :: UserId -> Invite -> Bool
 inviteBelongsToUser userId invite = invite^.player1 == userId || invite^.player2 == userId
 
+type GameId = Int
+
+data GameAppState = GameAppState {
+  _gameAppStateId :: GameId,
+  _gameAppStatePlayers :: (UserId, UserId),
+  _gameAppStateState :: G.State
+} deriving (Eq, Show)
+
+makeLenses ''GameAppState
+
+instance ToJSON GameAppState where
+  toJSON gameAppState = object [
+      "id" .= (gameAppState^.gameAppStateId),
+      "players" .= (gameAppState^.gameAppStatePlayers),
+      "state" .= (gameAppState^.gameAppStateState)
+    ]
+
 data AppState = AppState {
   _users :: [User],
-  _invites :: [Invite]
+  _invites :: [Invite],
+  _gameAppStates :: [GameAppState]
 } deriving (Eq, Show)
 
 makeLenses ''AppState
@@ -74,7 +93,7 @@ userByUsername username' = users . predicateToAtLike isUser
     isUser u = u^.username == Just username'
 
 initialAppState :: AppState
-initialAppState = AppState { _users = [], _invites = [] }
+initialAppState = AppState { _users = [], _invites = [], _gameAppStates = [] }
 
 getUserById :: UserId -> AppState -> Maybe User
 getUserById userId' appState = find (\u -> u^.userId == userId') (appState^.users)
