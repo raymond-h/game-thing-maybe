@@ -9,7 +9,7 @@ import Network.HTTP.Types
 import Test.Hspec.QuickCheck (prop)
 import Test.Hspec.Wai
 import Test.Hspec.Wai.JSON
-import Test.Hspec.Wai.QuickCheck as WQC
+import qualified Test.Hspec.Wai.QuickCheck as WQC
 import Test.QuickCheck
 import Test.QuickCheck.Poly
 import Data.Monoid
@@ -39,6 +39,15 @@ resetAppState appStateTVar = atomically $ writeTVar appStateTVar testAppState
 main :: IO ()
 main = hspec $ do
   describe "AppState" $ do
+    describe "nextId" $ do
+      prop "should always return a value greater than all input values" $
+        \(NonEmpty xs) -> all (\x -> x < nextId xs) xs
+
+      prop "should equal the successor to at least one input value" $
+        \(NonEmpty nnXs) ->
+          let xs = map getNonNegative nnXs
+          in any (\x -> succ x == nextId xs) xs
+
     describe "userById lens" $ do
       it "allows getting" $ do
         let (user, appState) = ensureUser "hello" initialAppState

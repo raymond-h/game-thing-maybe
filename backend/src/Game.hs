@@ -30,6 +30,16 @@ makeLenses ''State
 makeLenses ''PlayerState
 makeLenses ''Piece
 
+initialPlayerState = PlayerState {
+  _wonPieces = 0, _outOfPlayPieces = 7, _fieldedPieces = []
+}
+
+initialState = State {
+  _playerStates = (initialPlayerState, initialPlayerState),
+  _currentPlayer = Player1,
+  _lastRoll = Nothing
+}
+
 instance ToJSON State where
   toJSON state = object [
       "playerStates" .= (state ^. playerStates),

@@ -11,6 +11,8 @@ import Data.Maybe
 import Data.Aeson
 import Data.Bifunctor (first)
 import Data.List (find)
+import Data.Semigroup (Max(..))
+import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.ByteString as BS
 import Control.Monad.State.Strict
@@ -118,6 +120,29 @@ addInvite inv = invites %~ (++[inv])
 
 findInvitesForUser :: UserId -> AppState -> [Invite]
 findInvitesForUser userId appState = filter (inviteBelongsToUser userId) (appState ^. invites)
+
+foldDefault :: Semigroup s => s -> [s] -> s
+foldDefault = foldr (<>)
+
+nextId = succ . getMax . foldDefault (Max 0) . map Max
+
+nextGameId :: AppState -> GameId
+nextGameId = nextId . map _gameAppStateId . _gameAppStates
+
+acceptInvite :: Invite -> AppState -> (Maybe GameAppState, AppState)
+acceptInvite inv = runState $ do
+  hasInv <- uses invites (inv `elem`)
+
+  if hasInv then do
+    invites %= L.delete inv
+    newGameId <- gets nextGameId
+
+    let game = GameAppState newGameId (inv^.player1, inv^.player2) G.initialState
+
+    gameAppStates %= (++[game])
+    return $ Just game
+
+  else return Nothing
 
 -- Test stuff
 testAppState :: AppState
