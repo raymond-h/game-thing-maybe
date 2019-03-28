@@ -144,7 +144,7 @@ createApp environment appState = do
 
     S.get "/auth" $ do
       userId <- view AS.userId <$> auth
-      S.text $ "gj on the authenticating: " <> LT.pack (show userId)
+      S.text $ "gj on the authenticating!: " <> LT.pack (show userId)
 
     S.get "/me" $ do
       userId <- view AS.userId <$> auth
