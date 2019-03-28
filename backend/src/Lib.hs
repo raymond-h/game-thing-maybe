@@ -33,8 +33,8 @@ import Util (queryTVar, modifyTVarState)
 import qualified AppState as AS
 import qualified Auth0Management as A0M
 
-import Service.UserInfo as UI
-import Service.Invite as I
+import qualified Service.UserInfo as UI
+import qualified Service.Invite as I
 
 getEnv' :: Read r => String -> IO (Maybe r)
 getEnv' var = do
@@ -64,6 +64,15 @@ authenticate appState jwtValidationSettings jwkSet = do
   user <- modifyTVarState appState $ AS.ensureUser userId
 
   return (user :: AS.User)
+
+testAuthenticate isTest appStateTVar = do
+  guard isTest
+  mAuth <- S.header "Authorization"
+  case LT.toStrict <$> mAuth of
+    Nothing -> S.status status401 >> S.finish
+    Just userId -> do
+      appState <- liftIO . readTVarIO $ appStateTVar
+      return . fromJust $ AS.getUserById userId appState
 
 checkError cond status errMsg = unless cond $ do
   S.status status
@@ -112,14 +121,9 @@ createApp environment appState = do
         & issuerPredicate .~ (==issuer)
         & allowedSkew .~ 30 * 60
 
+    auth :: S.ActionM AS.User
     auth = case mJwkSetOrError of
-      Nothing -> do
-        guard isTest
-        mAuth <- S.header "Authorization"
-        case mAuth of
-          Nothing -> S.status status401 >> S.finish
-          Just user -> return . AS.testAuth . LT.toStrict $ user
-
+      Nothing -> testAuthenticate isTest appState
       Just (Right jwkSet) -> authenticate appState jwtValidationSettings jwkSet
 
   S.scottyApp $ do
@@ -146,7 +150,7 @@ createApp environment appState = do
       userId <- view AS.userId <$> auth
       S.json userId
 
-    S.get "/user-info" $ UI.getUserInfo auth appState
+    S.get "/user-info" $ UI.getUserInfo auth
     S.put "/user-info" $ UI.updateUserInfo auth appState
 
     S.get "/invites" $ I.getInvites auth appState

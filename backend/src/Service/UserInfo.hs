@@ -21,7 +21,7 @@ import qualified Data.Text as T
 
 import AppState as AS
 import Validation as V
-import Util (stateTVar, sendErrorAndFinish)
+import Util (Updater, stateTVar)
 
 newtype UserInfoBody = UserInfoBody {
   userInfoUsername :: Maybe T.Text
@@ -52,28 +52,37 @@ validateUserInfoBody userInfo = usernameValidation $> userInfo
 
 jsonInput valFn = handleValidation . valFn =<< S.jsonData
 
-getUserInfo :: ActionM User -> TVar AppState -> ActionM ()
-getUserInfo auth appStateTVar = do
-  userId <- view userId <$> auth
-  mUser <- view (userById userId) <$> (liftIO . readTVarIO) appStateTVar
+getUserInfo :: ActionM User -> ActionM ()
+getUserInfo auth = S.json . getUserInfoLogic =<< auth
 
-  case mUser of
-    Nothing -> sendErrorAndFinish status404 ("User '" <> userId <> "' does not exist")
-
-    Just user -> S.json $ UserInfoBody { userInfoUsername = user ^. username }
+getUserInfoLogic :: User -> UserInfoBody
+getUserInfoLogic user = UserInfoBody { userInfoUsername = user ^. username }
 
 updateUserInfo :: ActionM User -> TVar AppState -> ActionM ()
 updateUserInfo auth appStateTVar = do
-  userId' <- view userId <$> auth
-  userInfo <- jsonInput validateUserInfoBody
+  user <- auth
 
-  mUser <- liftIO . atomically . stateTVar appStateTVar . runState $ do
+  body <- S.jsonData
+  userInfo <- V.handleValidation $ validateUserInfoBody body
+
+  result <- liftIO . atomically $ updateUserInfoLogic user userInfo (stateTVar appStateTVar)
+
+  S.json result
+
+-- precondition: "user" comes from "auth" function
+updateUserInfoLogic :: Monad m =>
+    User ->
+    UserInfoBody ->
+    Updater m AppState (Maybe User) ->
+    m UserInfoBody
+updateUserInfoLogic user userInfo modifyAppState = do
+  let userId' = view userId user
+
+  -- because "user" is a parameter, we already know the user has to already exist
+  (Just newUser) <- modifyAppState . runState $ do
     forM_ (userInfoUsername userInfo) $ \newUsername ->
       (userById userId' . _Just . username) `assign` Just newUsername
 
     use $ userById userId'
 
-  case (mUser :: Maybe User) of
-    Nothing -> sendErrorAndFinish status404 ("User '" <> userId' <> "' does not exist" :: T.Text)
-
-    Just user -> S.json $ UserInfoBody { userInfoUsername = user ^. username }
+  return $ UserInfoBody { userInfoUsername = newUser ^. username }

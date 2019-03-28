@@ -10,6 +10,8 @@ import Control.Monad.Trans (liftIO, MonadIO)
 import Control.Concurrent.STM hiding (check)
 import Web.Scotty as S
 
+type Updater m s r = (s -> (r, s)) -> m r
+
 toMultiMap :: Ord f => [(f, e)] -> M.Map f [e]
 toMultiMap = M.fromListWith (<>) . wrapSecond . reverse
   where
@@ -19,7 +21,7 @@ toMultiMap = M.fromListWith (<>) . wrapSecond . reverse
 atomically' :: MonadIO m => STM a -> m a
 atomically' = liftIO . atomically
 
-stateTVar :: TVar s -> (s -> (a, s)) -> STM a
+stateTVar :: TVar s -> Updater STM s a
 stateTVar var f = do
   s <- readTVar var
   let (a, s') = f s

@@ -4,7 +4,8 @@
 
 import Control.Lens hiding ((.=))
 import Data.Aeson hiding (json)
-import Test.Hspec
+import qualified Control.Monad.State.Strict as S
+import Test.Hspec as H
 import Network.HTTP.Types
 import Test.Hspec.QuickCheck (prop)
 import Test.Hspec.Wai
@@ -21,6 +22,7 @@ import qualified Data.Text as T
 
 import Lib (createApp, Environment(..))
 import AppState as AS
+import qualified Service.UserInfo as UI
 import Util (adjustMatching)
 
 waiExpectation :: WaiExpectation -> WaiExpectation
@@ -33,6 +35,8 @@ setupEnv = do
   setEnv "AUTH0_DOMAIN" "domain"
   setEnv "AUTH0_CLIENT_ID" "client-id"
   setEnv "AUTH0_CLIENT_SECRET" "client-secret"
+
+runInState = flip S.runState
 
 resetAppState appStateTVar = atomically $ writeTVar appStateTVar testAppState
 
@@ -91,6 +95,36 @@ main = hspec $ do
       prop "causes no difference if predicate matches no element and function returns Nothing" $
         \(xs :: [A]) -> adjustMatching (const False) (\Nothing -> Nothing) xs `shouldBe` xs
 
+  describe "App logic" $ do
+    describe "user info service" $ do
+      it "can get user info" $ do
+        let
+          user = User { _userId = "whatever", _username = Just "cool-username" }
+
+        UI.getUserInfoLogic user `shouldBe` UI.UserInfoBody (Just "cool-username")
+
+      it "can set username" $ do
+        let
+          user = User { _userId = "hello", _username = Nothing }
+          startAppState = addUser user initialAppState
+
+          (result, endAppState) = runInState startAppState $
+            UI.updateUserInfoLogic user (UI.UserInfoBody $ Just "username") S.state
+
+        endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Just "username"
+        result `shouldBe` UI.UserInfoBody (Just "username")
+
+      it "cannot unset (username input prop is ignored if nothing)" $ do
+        let
+          user = User { _userId = "hello", _username = Just "username" }
+          startAppState = addUser user initialAppState
+
+          (result, endAppState) = runInState startAppState $
+            UI.updateUserInfoLogic user (UI.UserInfoBody Nothing) S.state
+
+        endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Just "username"
+        result `shouldBe` UI.UserInfoBody (Just "username")
+
   appStateTVar <- runIO $ newTVarIO testAppState
 
   describe "REST app" $ beforeAll_ setupEnv $ before_ (resetAppState appStateTVar) $ with (createApp Test appStateTVar) $ do
@@ -131,23 +165,3 @@ main = hspec $ do
         request methodGet "/invites" [("Authorization", "user2")] ""
           `shouldRespondWith`
           [json|[{"player1":"user2","player2":"user3"}]|] { matchStatus = 200 }
-
-    describe "/user-info" $ do
-      it "should allow getting user info when username null" $ do
-        request methodGet "/user-info" [("Authorization", "user1")] ""
-          `shouldRespondWith`
-          [json|{"username":null}|] { matchStatus = 200 }
-
-      it "should allow getting user info when username non-null" $ do
-        request methodGet "/user-info" [("Authorization", "user2")] ""
-          `shouldRespondWith`
-          [json|{"username":"testuser2"}|] { matchStatus = 200 }
-
-      it "should allow setting username" $ do
-        request methodPut "/user-info" [("Authorization", "user1"), ("Content-Type", "application/json")] "{\"username\":\"ausername\"}"
-          `shouldRespondWith`
-          [json|{"username":"ausername"}|] { matchStatus = 200 }
-
-        request methodGet "/user-info" [("Authorization", "user1")] ""
-          `shouldRespondWith`
-          [json|{"username":"ausername"}|] { matchStatus = 200 }

@@ -103,6 +103,9 @@ getUserById userId' appState = find (\u -> u^.userId == userId') (appState^.user
 hasUser :: UserId -> AppState -> Bool
 hasUser userId' appState = any (\u -> u^.userId == userId') (appState^.users)
 
+addUser :: User -> AppState -> AppState
+addUser user appState = appState & users %~ (++[user])
+
 ensureUser :: UserId -> AppState -> (User, AppState)
 ensureUser userId = runState $ do
   hasUser' <- gets $ hasUser userId
