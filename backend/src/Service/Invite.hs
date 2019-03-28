@@ -31,32 +31,56 @@ instance FromJSON InviteBody where
     ]
 
 getInvites :: ActionM User -> TVar AppState -> ActionM ()
-getInvites auth appState = do
-  userId <- view AS.userId <$> (requireUsername =<< auth)
-  invites <- AS.findInvitesForUser userId <$> (liftIO . readTVarIO) appState
+getInvites auth appStateTVar = do
+  user <- requireUsername =<< auth
+  appState <- liftIO . readTVarIO $ appStateTVar
+
+  let
+    userId = user ^. AS.userId
+    invites = getInvitesLogic userId appState
+
   S.json invites
+
+getInvitesLogic :: UserId -> AppState -> [Invite]
+getInvitesLogic = AS.findInvitesForUser
 
 createInvite :: ActionM User -> TVar AppState -> ActionM ()
 createInvite auth appStateTVar = do
   user <- requireUsername =<< auth
-  let userId' = user ^. userId
+  body <- S.jsonData
 
   let
-    lensFrom (InviteBodyUserId uId) = userById uId
-    lensFrom (InviteBodyUsername uName) = userByUsername uName
+    getAppState = readTVar appStateTVar
+    modifyAppState = modifyTVar appStateTVar
 
-  otherUserLens <- lensFrom <$> S.jsonData
+  result <- liftIO . atomically $ createInviteLogic user body getAppState modifyAppState
 
-  join $ liftIO . atomically $ do
-    appState <- readTVar appStateTVar
+  case result of
+    Left (status, msg) -> sendErrorAndFinish status msg
+    Right invite -> S.json invite
 
-    case appState ^? otherUserLens . _Just . userId of
-      Nothing -> return $ sendErrorAndFinish badRequest400 ("No such user" :: T.Text)
+createInviteLogic :: Monad m =>
+  User ->
+  InviteBody ->
+  m AppState ->
+  ((AppState -> AppState) -> m a) ->
+  m (Either (Status, T.Text) Invite)
+createInviteLogic user body getAppState modifyAppState = do
+  let
+    userId' = user ^. userId
 
-      Just otherUserId -> do
-        let invite = Invite { _player1 = userId', _player2 = otherUserId }
+    otherUserLens = case body of
+      InviteBodyUserId uId -> userById uId
+      InviteBodyUsername uName -> userByUsername uName
 
-        modifyTVar appStateTVar $ addInvite invite
+  appState <- getAppState
 
-        return $ S.json invite
+  case appState ^? otherUserLens . _Just . userId of
+    Nothing -> return $ Left (badRequest400, ("No such user" :: T.Text))
 
+    Just otherUserId -> do
+      let invite = Invite { _player1 = userId', _player2 = otherUserId }
+
+      modifyAppState $ addInvite invite
+
+      return $ Right invite

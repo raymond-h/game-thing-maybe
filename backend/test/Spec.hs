@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE QuasiQuotes #-}
 
+import Data.Maybe (fromJust)
 import Control.Lens hiding ((.=))
 import Data.Aeson hiding (json)
 import qualified Control.Monad.State.Strict as S
@@ -23,6 +24,7 @@ import qualified Data.Text as T
 import Lib (createApp, Environment(..))
 import AppState as AS
 import qualified Service.UserInfo as UI
+import qualified Service.Invite as I
 import Util (adjustMatching)
 
 waiExpectation :: WaiExpectation -> WaiExpectation
@@ -125,6 +127,71 @@ main = hspec $ do
         endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Just "username"
         result `shouldBe` UI.UserInfoBody (Just "username")
 
+    describe "invite service" $ do
+      it "fetches invites for user" $ do
+        let
+          invite1 = Invite { _player1 = "user2", _player2 = "user3" }
+          invite2 = Invite { _player1 = "user3", _player2 = "user2" }
+          invite3 = Invite { _player1 = "someone", _player2 = "else" }
+
+          startAppState = addInvite invite1 $ addInvite invite2 $ addInvite invite3 $ testAppState
+
+        I.getInvitesLogic "user2" startAppState `shouldContain` [invite1]
+        I.getInvitesLogic "user2" startAppState `shouldContain` [invite2]
+        I.getInvitesLogic "user2" startAppState `shouldNotContain` [invite3]
+
+      it "creates invites by user ID" $ do
+        let
+          startAppState = testAppState
+          user = fromJust $ getUserById "user2" startAppState
+
+          (result, endAppState) = runInState startAppState $
+            I.createInviteLogic user (I.InviteBodyUserId "user3") S.get S.modify
+
+          expectedInvite = Invite { _player1 = "user2", _player2 = "user3" }
+
+        I.getInvitesLogic "user2" endAppState `shouldBe` [expectedInvite]
+        I.getInvitesLogic "user3" endAppState `shouldBe` [expectedInvite]
+        result `shouldBe` Right expectedInvite
+
+      it "creates invites by username" $ do
+        let
+          startAppState = testAppState
+          user = fromJust $ getUserById "user2" startAppState
+
+          (result, endAppState) = runInState startAppState $
+            I.createInviteLogic user (I.InviteBodyUsername "anotheruser") S.get S.modify
+
+          expectedInvite = Invite { _player1 = "user2", _player2 = "user3" }
+
+        I.getInvitesLogic "user2" endAppState `shouldBe` [expectedInvite]
+        I.getInvitesLogic "user3" endAppState `shouldBe` [expectedInvite]
+        result `shouldBe` Right expectedInvite
+
+      it "reports error if no user with given ID exists" $ do
+        let
+          startAppState = testAppState
+          user = fromJust $ getUserById "user2" startAppState
+
+          (result, endAppState) = runInState startAppState $
+            I.createInviteLogic user (I.InviteBodyUserId "id-does-not-exist") S.get S.modify
+
+        I.getInvitesLogic "user2" endAppState `shouldBe` []
+        I.getInvitesLogic "user3" endAppState `shouldBe` []
+        result `shouldBe` Left (badRequest400, "No such user")
+
+      it "reports error if no user with given username exists" $ do
+        let
+          startAppState = testAppState
+          user = fromJust $ getUserById "user2" startAppState
+
+          (result, endAppState) = runInState startAppState $
+            I.createInviteLogic user (I.InviteBodyUsername "uname-does-not-exist") S.get S.modify
+
+        I.getInvitesLogic "user2" endAppState `shouldBe` []
+        I.getInvitesLogic "user3" endAppState `shouldBe` []
+        result `shouldBe` Left (badRequest400, "No such user")
+
   appStateTVar <- runIO $ newTVarIO testAppState
 
   describe "REST app" $ beforeAll_ setupEnv $ before_ (resetAppState appStateTVar) $ with (createApp Test appStateTVar) $ do
@@ -142,26 +209,3 @@ main = hspec $ do
         request methodPost "/invites" [("Authorization", "user1"), ("Content-Type", "application/json")] "{\"userId\":\"user2\"}"
           `shouldRespondWith`
           [json|{"error":"Must set username first"}|] { matchStatus = 401 }
-
-      it "should get no invites by default" $ do
-        request methodGet "/invites" [("Authorization", "user2")] ""
-          `shouldRespondWith`
-          [json|[]|] { matchStatus = 200 }
-
-      it "should create invites by ID" $ waiExpectation $ do
-        request methodPost "/invites" [("Authorization", "user2"), ("Content-Type", "application/json")] "{\"userId\":\"user1\"}"
-          `shouldRespondWith`
-          [json|{"player1":"user2","player2":"user1"}|] { matchStatus = 200 }
-
-        request methodGet "/invites" [("Authorization", "user2")] ""
-          `shouldRespondWith`
-          [json|[{"player1":"user2","player2":"user1"}]|] { matchStatus = 200 }
-
-      it "should create invites by username" $ waiExpectation $ do
-        request methodPost "/invites" [("Authorization", "user2"), ("Content-Type", "application/json")] "{\"username\":\"anotheruser\"}"
-          `shouldRespondWith`
-          [json|{"player1":"user2","player2":"user3"}|] { matchStatus = 200 }
-
-        request methodGet "/invites" [("Authorization", "user2")] ""
-          `shouldRespondWith`
-          [json|[{"player1":"user2","player2":"user3"}]|] { matchStatus = 200 }
