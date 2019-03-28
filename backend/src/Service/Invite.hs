@@ -7,6 +7,7 @@ import Control.Applicative
 import Control.Concurrent.STM hiding (check)
 import Control.Lens hiding ((.=))
 import Control.Monad
+import qualified Control.Monad.Except as E
 import Control.Monad.Trans (liftIO)
 import Data.Aeson
 import Data.Foldable
@@ -16,7 +17,7 @@ import Web.Scotty as S
 import qualified Data.Text as T
 
 import AppState as AS
-import AuthUtil (requireUsername)
+import AuthUtil (requireUsernameE)
 import Util (stateTVar, sendErrorAndFinish, guardError)
 
 data InviteBody =
@@ -32,21 +33,25 @@ instance FromJSON InviteBody where
 
 getInvites :: ActionM User -> TVar AppState -> ActionM ()
 getInvites auth appStateTVar = do
-  user <- requireUsername =<< auth
+  user <- auth
   appState <- liftIO . readTVarIO $ appStateTVar
 
+  let result = getInvitesLogic user appState
+
+  case result of
+    Left (status, msg) -> sendErrorAndFinish status msg
+    Right invite -> S.json invite
+
+getInvitesLogic :: User -> AppState -> Either (Status, T.Text) [Invite]
+getInvitesLogic user appState =
   let
-    userId = user ^. AS.userId
-    invites = getInvitesLogic userId appState
-
-  S.json invites
-
-getInvitesLogic :: UserId -> AppState -> [Invite]
-getInvitesLogic = AS.findInvitesForUser
+    userId' = user ^. AS.userId
+  in
+    AS.findInvitesForUser userId' appState <$ requireUsernameE user
 
 createInvite :: ActionM User -> TVar AppState -> ActionM ()
 createInvite auth appStateTVar = do
-  user <- requireUsername =<< auth
+  user <- auth
   body <- S.jsonData
 
   let
@@ -65,7 +70,9 @@ createInviteLogic :: Monad m =>
   m AppState ->
   ((AppState -> AppState) -> m a) ->
   m (Either (Status, T.Text) Invite)
-createInviteLogic user body getAppState modifyAppState = do
+createInviteLogic user body getAppState modifyAppState = E.runExceptT $ do
+  E.liftEither $ requireUsernameE user
+
   let
     userId' = user ^. userId
 
@@ -73,14 +80,14 @@ createInviteLogic user body getAppState modifyAppState = do
       InviteBodyUserId uId -> userById uId
       InviteBodyUsername uName -> userByUsername uName
 
-  appState <- getAppState
+  appState <- E.lift $ getAppState
 
   case appState ^? otherUserLens . _Just . userId of
-    Nothing -> return $ Left (badRequest400, ("No such user" :: T.Text))
+    Nothing -> E.throwError (badRequest400, ("No such user" :: T.Text))
 
     Just otherUserId -> do
       let invite = Invite { _player1 = userId', _player2 = otherUserId }
 
-      modifyAppState $ addInvite invite
+      E.lift $ modifyAppState $ addInvite invite
 
-      return $ Right invite
+      return invite

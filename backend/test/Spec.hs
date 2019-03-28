@@ -3,6 +3,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 
 import Data.Maybe (fromJust)
+import Data.Either (isLeft)
 import Control.Lens hiding ((.=))
 import Data.Aeson hiding (json)
 import qualified Control.Monad.State.Strict as S
@@ -114,7 +115,23 @@ main = hspec $ do
             UI.updateUserInfoLogic user (UI.UserInfoBody $ Just "username") S.state
 
         endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Just "username"
-        result `shouldBe` UI.UserInfoBody (Just "username")
+        result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
+
+      let
+        usernameValidationTest un = do
+          let
+            user = User { _userId = "hello", _username = Nothing }
+            startAppState = addUser user initialAppState
+
+            (result, endAppState) = runInState startAppState $
+              UI.updateUserInfoLogic user (UI.UserInfoBody $ Just un) S.state
+
+          endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Nothing
+          result ^? _Left._1 `shouldBe` Just badRequest400
+
+      it "disallows too long username" $ usernameValidationTest "veryveryverylongusername"
+      it "disallows too short username" $ usernameValidationTest "u"
+      it "disallows non-alphanumeric letters" $ usernameValidationTest "dasf-.?=fg"
 
       it "cannot unset (username input prop is ignored if nothing)" $ do
         let
@@ -125,9 +142,14 @@ main = hspec $ do
             UI.updateUserInfoLogic user (UI.UserInfoBody Nothing) S.state
 
         endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Just "username"
-        result `shouldBe` UI.UserInfoBody (Just "username")
+        result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
 
     describe "invite service" $ do
+      it "disallows getting invites if no username set" $ do
+        let user = fromJust $ getUserById "user1" testAppState
+
+        I.getInvitesLogic user testAppState `shouldBe` Left (forbidden403, "Must set username first")
+
       it "fetches invites for user" $ do
         let
           invite1 = Invite { _player1 = "user2", _player2 = "user3" }
@@ -135,10 +157,26 @@ main = hspec $ do
           invite3 = Invite { _player1 = "someone", _player2 = "else" }
 
           startAppState = addInvite invite1 $ addInvite invite2 $ addInvite invite3 $ testAppState
+          user = fromJust $ getUserById "user2" startAppState
 
-        I.getInvitesLogic "user2" startAppState `shouldContain` [invite1]
-        I.getInvitesLogic "user2" startAppState `shouldContain` [invite2]
-        I.getInvitesLogic "user2" startAppState `shouldNotContain` [invite3]
+          invites :: [Invite]
+          (Right invites) = I.getInvitesLogic user startAppState
+
+        invites `shouldContain` [invite1]
+        invites `shouldContain` [invite2]
+        invites `shouldNotContain` [invite3]
+
+      it "disallows creating invites if no username set" $ do
+        let
+          startAppState = testAppState
+          user = fromJust $ getUserById "user1" startAppState
+
+          (result, endAppState) = runInState startAppState $
+            I.createInviteLogic user (I.InviteBodyUserId "user3") S.get S.modify
+
+        findInvitesForUser "user1" endAppState `shouldBe` []
+        findInvitesForUser "user3" endAppState `shouldBe` []
+        result `shouldBe` Left (forbidden403, "Must set username first")
 
       it "creates invites by user ID" $ do
         let
@@ -150,8 +188,8 @@ main = hspec $ do
 
           expectedInvite = Invite { _player1 = "user2", _player2 = "user3" }
 
-        I.getInvitesLogic "user2" endAppState `shouldBe` [expectedInvite]
-        I.getInvitesLogic "user3" endAppState `shouldBe` [expectedInvite]
+        findInvitesForUser "user2" endAppState `shouldBe` [expectedInvite]
+        findInvitesForUser "user3" endAppState `shouldBe` [expectedInvite]
         result `shouldBe` Right expectedInvite
 
       it "creates invites by username" $ do
@@ -164,8 +202,8 @@ main = hspec $ do
 
           expectedInvite = Invite { _player1 = "user2", _player2 = "user3" }
 
-        I.getInvitesLogic "user2" endAppState `shouldBe` [expectedInvite]
-        I.getInvitesLogic "user3" endAppState `shouldBe` [expectedInvite]
+        findInvitesForUser "user2" endAppState `shouldBe` [expectedInvite]
+        findInvitesForUser "user3" endAppState `shouldBe` [expectedInvite]
         result `shouldBe` Right expectedInvite
 
       it "reports error if no user with given ID exists" $ do
@@ -176,8 +214,8 @@ main = hspec $ do
           (result, endAppState) = runInState startAppState $
             I.createInviteLogic user (I.InviteBodyUserId "id-does-not-exist") S.get S.modify
 
-        I.getInvitesLogic "user2" endAppState `shouldBe` []
-        I.getInvitesLogic "user3" endAppState `shouldBe` []
+        findInvitesForUser "user2" endAppState `shouldBe` []
+        findInvitesForUser "user3" endAppState `shouldBe` []
         result `shouldBe` Left (badRequest400, "No such user")
 
       it "reports error if no user with given username exists" $ do
@@ -188,8 +226,8 @@ main = hspec $ do
           (result, endAppState) = runInState startAppState $
             I.createInviteLogic user (I.InviteBodyUsername "uname-does-not-exist") S.get S.modify
 
-        I.getInvitesLogic "user2" endAppState `shouldBe` []
-        I.getInvitesLogic "user3" endAppState `shouldBe` []
+        findInvitesForUser "user2" endAppState `shouldBe` []
+        findInvitesForUser "user3" endAppState `shouldBe` []
         result `shouldBe` Left (badRequest400, "No such user")
 
   appStateTVar <- runIO $ newTVarIO testAppState
@@ -198,14 +236,3 @@ main = hspec $ do
     describe "/" $ do
       it "should work OK" $ do
         get "/" `shouldRespondWith` "hello"
-
-    describe "/invites" $ do
-      it "should refuse getting if no username set" $ do
-        request methodGet "/invites" [("Authorization", "user1")] ""
-          `shouldRespondWith`
-          [json|{"error":"Must set username first"}|] { matchStatus = 401 }
-
-      it "should refuse creating if no username set" $ waiExpectation $ do
-        request methodPost "/invites" [("Authorization", "user1"), ("Content-Type", "application/json")] "{\"userId\":\"user2\"}"
-          `shouldRespondWith`
-          [json|{"error":"Must set username first"}|] { matchStatus = 401 }

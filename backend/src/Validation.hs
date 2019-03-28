@@ -37,7 +37,17 @@ maybeRespond ea = case ea of
 
   Success a -> return a
 
+maybeRespondE (Left e) = do
+  status badRequest400
+  json e
+  finish
+maybeRespondE (Right a) =
+  return a
+
+handleValidationE :: (Ord f, ToJSONKey f, ToJSON e) => Validation [(f, e)] a -> Either (M.Map f [e]) a
+handleValidationE = validationToEither . fields
+
 handleValidation :: (Ord f, ToJSONKey f, ToJSON e) => Validation [(f, e)] a -> ActionM a
-handleValidation = maybeRespond . first formatValError . fields
+handleValidation = maybeRespondE . first formatValError . handleValidationE
   where
     formatValError errMap = object ["errors" .= errMap]
