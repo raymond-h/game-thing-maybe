@@ -47,6 +47,10 @@ maybeRespondE (Right a) =
 handleValidationE :: (Ord f, ToJSONKey f, ToJSON e) => Validation [(f, e)] a -> Either (M.Map f [e]) a
 handleValidationE = validationToEither . fields
 
+handleValidationE' v = case handleValidationE v of
+  Left errMap -> Left (badRequest400, object ["errors" .= errMap])
+  Right r -> Right r
+
 handleValidation :: (Ord f, ToJSONKey f, ToJSON e) => Validation [(f, e)] a -> ActionM a
 handleValidation = maybeRespondE . first formatValError . handleValidationE
   where

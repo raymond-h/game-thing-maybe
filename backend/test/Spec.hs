@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
 import Data.Either (isLeft)
 import Control.Lens hiding ((.=))
 import Data.Aeson hiding (json)
@@ -100,6 +100,10 @@ main = hspec $ do
 
   describe "App logic" $ do
     describe "user info service" $ do
+      let
+        updateUser :: User -> S.State AS.AppState ()
+        updateUser = S.modify . AS.updateUser
+
       it "can get user info" $ do
         let
           user = User { _userId = "whatever", _username = Just "cool-username" }
@@ -112,7 +116,7 @@ main = hspec $ do
           startAppState = addUser user initialAppState
 
           (result, endAppState) = runInState startAppState $
-            UI.updateUserInfoLogic user (UI.UserInfoBody $ Just "username") S.state
+            UI.updateUserInfoLogic updateUser user (UI.UserInfoBody $ Just "username")
 
         endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Just "username"
         result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
@@ -124,14 +128,14 @@ main = hspec $ do
             startAppState = addUser user initialAppState
 
             (result, endAppState) = runInState startAppState $
-              UI.updateUserInfoLogic user (UI.UserInfoBody $ Just un) S.state
+              UI.updateUserInfoLogic updateUser user (UI.UserInfoBody $ Just un)
 
           endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Nothing
-          result ^? _Left._1 `shouldBe` Just badRequest400
+          result ^? _Left.(at "username") `shouldSatisfy` isJust
 
       it "disallows too long username" $ usernameValidationTest "veryveryverylongusername"
       it "disallows too short username" $ usernameValidationTest "u"
-      it "disallows non-alphanumeric letters" $ usernameValidationTest "dasf-.?=fg"
+      it "disallows non-alphanumeric letters" $ usernameValidationTest "df-.?=fg"
 
       it "cannot unset (username input prop is ignored if nothing)" $ do
         let
@@ -139,16 +143,29 @@ main = hspec $ do
           startAppState = addUser user initialAppState
 
           (result, endAppState) = runInState startAppState $
-            UI.updateUserInfoLogic user (UI.UserInfoBody Nothing) S.state
+            UI.updateUserInfoLogic updateUser user (UI.UserInfoBody Nothing)
 
         endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Just "username"
         result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
 
     describe "invite service" $ do
-      it "disallows getting invites if no username set" $ do
-        let user = fromJust $ getUserById "user1" testAppState
+      let
+        lookupUser :: I.LookupCriteria -> S.State AS.AppState (Maybe AS.User)
+        lookupUser (I.ById uid) = use $ userById uid
+        lookupUser (I.ByUsername uname) = use $ userByUsername uname
 
-        I.getInvitesLogic user testAppState `shouldBe` Left (forbidden403, "Must set username first")
+        lookupInvites :: AS.UserId -> S.State AS.AppState [AS.Invite]
+        lookupInvites = S.gets . AS.findInvitesForUser
+
+        addInvite :: AS.Invite -> S.State AS.AppState ()
+        addInvite = S.modify . AS.addInvite
+
+      it "disallows getting invites if no username set" $ do
+        let
+          user = fromJust $ getUserById "user1" testAppState
+          (result, _) = runInState testAppState $ I.getInvitesLogic lookupInvites user
+
+        result `shouldBe` Left (forbidden403, "Must set username first")
 
       it "fetches invites for user" $ do
         let
@@ -156,11 +173,10 @@ main = hspec $ do
           invite2 = Invite { _player1 = "user3", _player2 = "user2" }
           invite3 = Invite { _player1 = "someone", _player2 = "else" }
 
-          startAppState = addInvite invite1 $ addInvite invite2 $ addInvite invite3 $ testAppState
+          startAppState = AS.addInvite invite1 $ AS.addInvite invite2 $ AS.addInvite invite3 $ testAppState
           user = fromJust $ getUserById "user2" startAppState
 
-          invites :: [Invite]
-          (Right invites) = I.getInvitesLogic user startAppState
+          (Right invites, _) = runInState startAppState $ I.getInvitesLogic lookupInvites user
 
         invites `shouldContain` [invite1]
         invites `shouldContain` [invite2]
@@ -172,7 +188,7 @@ main = hspec $ do
           user = fromJust $ getUserById "user1" startAppState
 
           (result, endAppState) = runInState startAppState $
-            I.createInviteLogic user (I.InviteBodyUserId "user3") S.get S.modify
+            I.createInviteLogic lookupUser addInvite user (I.InviteBodyUserId "user3")
 
         findInvitesForUser "user1" endAppState `shouldBe` []
         findInvitesForUser "user3" endAppState `shouldBe` []
@@ -184,7 +200,7 @@ main = hspec $ do
           user = fromJust $ getUserById "user2" startAppState
 
           (result, endAppState) = runInState startAppState $
-            I.createInviteLogic user (I.InviteBodyUserId "user3") S.get S.modify
+            I.createInviteLogic lookupUser addInvite user (I.InviteBodyUserId "user3")
 
           expectedInvite = Invite { _player1 = "user2", _player2 = "user3" }
 
@@ -198,7 +214,7 @@ main = hspec $ do
           user = fromJust $ getUserById "user2" startAppState
 
           (result, endAppState) = runInState startAppState $
-            I.createInviteLogic user (I.InviteBodyUsername "anotheruser") S.get S.modify
+            I.createInviteLogic lookupUser addInvite user (I.InviteBodyUsername "anotheruser")
 
           expectedInvite = Invite { _player1 = "user2", _player2 = "user3" }
 
@@ -212,7 +228,7 @@ main = hspec $ do
           user = fromJust $ getUserById "user2" startAppState
 
           (result, endAppState) = runInState startAppState $
-            I.createInviteLogic user (I.InviteBodyUserId "id-does-not-exist") S.get S.modify
+            I.createInviteLogic lookupUser addInvite user (I.InviteBodyUserId "id-does-not-exist")
 
         findInvitesForUser "user2" endAppState `shouldBe` []
         findInvitesForUser "user3" endAppState `shouldBe` []
@@ -224,7 +240,7 @@ main = hspec $ do
           user = fromJust $ getUserById "user2" startAppState
 
           (result, endAppState) = runInState startAppState $
-            I.createInviteLogic user (I.InviteBodyUsername "uname-does-not-exist") S.get S.modify
+            I.createInviteLogic lookupUser addInvite user (I.InviteBodyUsername "uname-does-not-exist")
 
         findInvitesForUser "user2" endAppState `shouldBe` []
         findInvitesForUser "user3" endAppState `shouldBe` []

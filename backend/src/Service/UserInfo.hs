@@ -63,32 +63,29 @@ updateUserInfo :: ActionM User -> TVar AppState -> ActionM ()
 updateUserInfo auth appStateTVar = do
   user <- auth
   body <- S.jsonData
+  let updateUser = modifyTVar' appStateTVar . AS.updateUser
 
-  result <- liftIO . atomically $ updateUserInfoLogic user body (stateTVar appStateTVar)
+  result <- liftIO . atomically $ updateUserInfoLogic updateUser user body
 
   case result of
-    Left (status, e) -> do
-      S.status status
-      S.json e
-      S.finish
+    Left e -> do
+      S.status badRequest400
+      S.json $ object ["errors" .= e]
     Right r -> S.json r
 
--- precondition: "user" comes from "auth" function
 updateUserInfoLogic :: Monad m =>
+    (User -> m ()) ->
     User ->
     UserInfoBody ->
-    Updater m AppState (Maybe User) ->
-    m (Either (Status, M.Map T.Text [T.Text]) UserInfoBody)
-updateUserInfoLogic user body modifyAppState = E.runExceptT $ do
-  userInfo <- E.liftEither . first ((,) status400) . V.handleValidationE . validateUserInfoBody $ body
+    m (Either (M.Map T.Text [T.Text]) UserInfoBody)
+updateUserInfoLogic updateUser user body = E.runExceptT $ do
+  userInfo <- E.liftEither . V.handleValidationE . validateUserInfoBody $ body
 
-  let userId' = view userId user
+  let
+    newUser = flip execState user $ do
+      forM_ (userInfoUsername userInfo) $ \newUsername ->
+        username `assign` Just newUsername
 
-  -- because "user" is a parameter, we already know the user has to already exist
-  (Just newUser) <- E.lift . modifyAppState . runState $ do
-    forM_ (userInfoUsername userInfo) $ \newUsername ->
-      (userById userId' . _Just . username) `assign` Just newUsername
-
-    use $ userById userId'
+  E.lift $ updateUser newUser
 
   return $ UserInfoBody { userInfoUsername = newUser ^. username }

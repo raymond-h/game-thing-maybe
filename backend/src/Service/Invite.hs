@@ -34,20 +34,23 @@ instance FromJSON InviteBody where
 getInvites :: ActionM User -> TVar AppState -> ActionM ()
 getInvites auth appStateTVar = do
   user <- auth
-  appState <- liftIO . readTVarIO $ appStateTVar
 
-  let result = getInvitesLogic user appState
+  let lookupInvites uid = AS.findInvitesForUser uid <$> readTVarIO appStateTVar
+
+  result <- liftIO $ getInvitesLogic lookupInvites user
 
   case result of
     Left (status, msg) -> sendErrorAndFinish status msg
     Right invite -> S.json invite
 
-getInvitesLogic :: User -> AppState -> Either (Status, T.Text) [Invite]
-getInvitesLogic user appState =
-  let
-    userId' = user ^. AS.userId
-  in
-    AS.findInvitesForUser userId' appState <$ requireUsernameE user
+getInvitesLogic :: Monad m =>
+  (UserId -> m [Invite]) ->
+  User ->
+  m (Either (Status, T.Text) [Invite])
+getInvitesLogic lookupInvites user = E.runExceptT $ do
+  E.liftEither $ requireUsernameE user
+
+  E.lift $ lookupInvites (user^.userId)
 
 createInvite :: ActionM User -> TVar AppState -> ActionM ()
 createInvite auth appStateTVar = do
@@ -55,39 +58,48 @@ createInvite auth appStateTVar = do
   body <- S.jsonData
 
   let
-    getAppState = readTVar appStateTVar
-    modifyAppState = modifyTVar appStateTVar
+    lookupUser criteria = do
+      appState <- readTVar appStateTVar
+      case criteria of
+        ById userId' -> return $ appState ^. userById userId'
+        ByUsername uname -> return $ appState ^. userByUsername uname
 
-  result <- liftIO . atomically $ createInviteLogic user body getAppState modifyAppState
+    addInvite inv = modifyTVar' appStateTVar $ AS.addInvite inv
+
+  result <- liftIO . atomically $ createInviteLogic lookupUser addInvite user body
 
   case result of
     Left (status, msg) -> sendErrorAndFinish status msg
     Right invite -> S.json invite
 
+data LookupCriteria = ById UserId | ByUsername T.Text
+
 createInviteLogic :: Monad m =>
+  (LookupCriteria -> m (Maybe User)) ->
+  (Invite -> m ()) ->
   User ->
   InviteBody ->
-  m AppState ->
-  ((AppState -> AppState) -> m a) ->
   m (Either (Status, T.Text) Invite)
-createInviteLogic user body getAppState modifyAppState = E.runExceptT $ do
+createInviteLogic lookupUser addInvite user body = E.runExceptT $ do
   E.liftEither $ requireUsernameE user
 
   let
     userId' = user ^. userId
 
-    otherUserLens = case body of
-      InviteBodyUserId uId -> userById uId
-      InviteBodyUsername uName -> userByUsername uName
+    lookupCriteria = case body of
+      InviteBodyUserId uId -> ById uId
+      InviteBodyUsername uName -> ByUsername uName
 
-  appState <- E.lift $ getAppState
+  mOtherUser <- E.lift $ lookupUser lookupCriteria
 
-  case appState ^? otherUserLens . _Just . userId of
-    Nothing -> E.throwError (badRequest400, ("No such user" :: T.Text))
+  case mOtherUser of
+    Nothing -> E.throwError (badRequest400, "No such user")
 
-    Just otherUserId -> do
-      let invite = Invite { _player1 = userId', _player2 = otherUserId }
+    Just otherUser -> do
+      let
+        otherUserId = otherUser ^. userId
+        invite = Invite { _player1 = userId', _player2 = otherUserId }
 
-      E.lift $ modifyAppState $ addInvite invite
+      E.lift $ addInvite invite
 
       return invite

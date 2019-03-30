@@ -89,7 +89,7 @@ userById userId' = users . predicateToAtLike isUser
   where
     isUser u = u^.userId == userId'
 
-userByUsername :: UserId -> Lens' AppState (Maybe User)
+userByUsername :: T.Text -> Lens' AppState (Maybe User)
 userByUsername username' = users . predicateToAtLike isUser
   where
     isUser u = u^.username == Just username'
@@ -105,6 +105,10 @@ hasUser userId' appState = any (\u -> u^.userId == userId') (appState^.users)
 
 addUser :: User -> AppState -> AppState
 addUser user appState = appState & users %~ (++[user])
+
+updateUser :: User -> AppState -> AppState
+updateUser user = (userById uid)._Just .~ user
+  where uid = _userId user
 
 ensureUser :: UserId -> AppState -> (User, AppState)
 ensureUser userId = runState $ do
