@@ -103,6 +103,8 @@ createInviteLogic lookupUser addInvite user body = E.runExceptT $ do
         otherUserId = otherUser ^. userId
         invite = Invite { _inviteId = Nothing, _player1 = userId', _player2 = otherUserId }
 
+      E.liftEither $ V.noteE (status400, "Cannot invite yourself") $ guard (userId' /= otherUserId)
+
       invId <- E.lift $ addInvite invite
 
       return $ invite & AS.inviteId .~ Just invId

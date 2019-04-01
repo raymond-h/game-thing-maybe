@@ -280,6 +280,17 @@ main = hspec $ do
         findInvitesForUser "user3" endAppState `shouldBe` [expectedInvite]
         result `shouldBe` Right expectedInvite
 
+      it "does not create invites to same user" $ do
+        let
+          startAppState = testAppState
+          (Just user) = getUserById "user2" startAppState
+
+          (result, endAppState) = runInState startAppState $
+            testCreateInvite user (I.InviteBodyUserId "user2")
+
+        findInvitesForUser "user2" endAppState `shouldBe` []
+        result `shouldBe` Left (badRequest400, "Cannot invite yourself")
+
       it "reports error if no user with given ID exists" $ do
         let
           startAppState = testAppState
