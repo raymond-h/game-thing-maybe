@@ -160,12 +160,3 @@ createGame uid otherUid appState =
     newAppState = appState & gameAppStates %~ M.insert newGameId gas
   in
     (gas, newAppState)
-
--- Test stuff
-testAppState :: AppState
-testAppState = initialAppState { _users = M.fromList [("user1", testAuth "user1"), ("user2", testAuth "user2"), ("user3", testAuth "user3")] }
-
-testAuth :: T.Text -> User
-testAuth "user1" = User { _userId = "user1", _username = Nothing }
-testAuth "user2" = User { _userId = "user2", _username = Just "testuser2" }
-testAuth "user3" = User { _userId = "user3", _username = Just "anotheruser" }

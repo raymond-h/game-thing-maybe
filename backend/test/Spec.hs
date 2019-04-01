@@ -30,6 +30,15 @@ import qualified Service.UserInfo as UI
 import qualified Service.Invite as I
 import Util (adjustMatching)
 
+testAppState :: AppState
+testAppState = initialAppState {
+  _users = M.fromList [
+    ("user1", User { _userId = "user1", _username = Nothing }),
+    ("user2", User { _userId = "user2", _username = Just "testuser2" }),
+    ("user3", User { _userId = "user3", _username = Just "anotheruser" })
+  ]
+}
+
 waiExpectation :: WaiExpectation -> WaiExpectation
 waiExpectation = id
 
@@ -304,7 +313,7 @@ main = hspec $ do
             I.acceptInviteLogic lookupInvite removeInvite addGame user (I.AcceptInviteBody 5)
 
         endAppState^.invites `shouldBe` M.empty
-        endAppState^.gameAppStates `shouldNotBe` M.empty
+        endAppState^.gameAppStates `shouldBe` M.singleton 1 (GameAppState 1 ("user2", "user3") G.initialState)
 
   appStateTVar <- runIO $ newTVarIO testAppState
 
