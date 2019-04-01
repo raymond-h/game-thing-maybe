@@ -161,28 +161,6 @@ createGame uid otherUid appState =
   in
     (gas, newAppState)
 
-acceptInvite :: Invite -> AppState -> (Maybe GameAppState, AppState)
-acceptInvite inv = runState $ do
-  let
-    mInvId :: Maybe Id
-    mInvId = inv^.inviteId
-
-  case mInvId of
-    Nothing -> return Nothing
-    Just invId -> do
-      hasInv <- uses invites (inv `elem`)
-
-      if hasInv then do
-        invites %= M.delete invId
-        newGameId <- gets nextGameId
-
-        let game = GameAppState newGameId (inv^.player1, inv^.player2) G.initialState
-
-        gameAppStates %= M.insert newGameId game
-        return $ Just game
-
-      else return Nothing
-
 -- Test stuff
 testAppState :: AppState
 testAppState = initialAppState { _users = M.fromList [("user1", testAuth "user1"), ("user2", testAuth "user2"), ("user3", testAuth "user3")] }
