@@ -86,6 +86,38 @@ main = hspec $ do
         appState ^.. users . at "hello" . _Just . username `shouldBe` [Nothing]
         updatedAppState ^.. users . at "hello" . _Just . username `shouldBe` [Just "Banana"]
 
+    describe "userByUsername lens" $ do
+      it "allows getting" $ do
+        let
+          user = User { _userId = "hello", _username = Just "SomeUname" }
+          appState = initialAppState & AS.addUser user
+
+        appState ^. userByUsername "SomeUname" `shouldBe` Just user
+
+      it "allows setting to Just user" $ do
+        let
+          appState = initialAppState
+          newUser = User { _userId = "hello", _username = Just "Hello-Person" }
+          updatedAppState = appState & userByUsername "Hello-Person" ?~ newUser
+
+        _users updatedAppState `shouldBe` M.singleton "hello" newUser
+
+      it "allows setting to Nothing" $ do
+        let
+          user = User { _userId = "hello", _username = Just "SomeUname" }
+          appState = initialAppState & AS.addUser user
+          updatedAppState = appState & userByUsername "SomeUname" .~ Nothing
+
+        updatedAppState^.users `shouldBe` M.empty
+
+      it "allows modifying existing user" $ do
+        let
+          user = User { _userId = "hello", _username = Just "SomeUname" }
+          appState = initialAppState & AS.addUser user
+          updatedAppState = appState & userByUsername "SomeUname" . traverse . username ?~ "Banana"
+
+        updatedAppState^.users.(to M.elems) `shouldBe` [User { _userId = "hello", _username = Just "Banana" }]
+
   describe "Util" $ do
     describe "adjustMatching" $ do
       it "can map first match" $ do

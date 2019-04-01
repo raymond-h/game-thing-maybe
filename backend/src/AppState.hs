@@ -91,10 +91,17 @@ predicateToAtLike pred = lens getter setter
 userById :: UserId -> Lens' AppState (Maybe User)
 userById userId' = users . at userId'
 
--- userByUsername :: T.Text -> Lens' AppState (Maybe User)
-userByUsername username' = users . to M.elems . predicateToAtLike isUser
+(&&&) :: (a -> b) -> (a -> c) -> a -> (b, c)
+(f1 &&& f2) v = (f1 v, f2 v)
+
+userByUsername :: T.Text -> Lens' AppState (Maybe User)
+userByUsername username' = users . mapListIso . predicateToAtLike pred
   where
-    isUser u = u^.username == Just username'
+    mapListIso :: Iso' (M.Map UserId User) [User]
+    mapListIso = iso M.elems (M.fromList . map (_userId &&& id))
+
+    pred :: User -> Bool
+    pred u = u^.username == Just username'
 
 initialAppState :: AppState
 initialAppState = AppState { _users = M.empty, _invites = M.empty, _gameAppStates = M.empty }
