@@ -123,7 +123,7 @@ acceptInvite auth appStateTVar = do
     lookupInvite invId = find (\inv -> _inviteId inv == Just invId) . view invites <$> readTVar appStateTVar
 
     removeInvite :: AS.Id -> STM ()
-    removeInvite invId = modifyTVar' appStateTVar $ AS.invites %~ filter (\inv -> AS._inviteId inv /= Just invId)
+    removeInvite invId = modifyTVar' appStateTVar $ AS.deleteInvite invId
 
     addGame :: AS.UserId -> AS.UserId -> STM AS.GameAppState
     addGame uid otherUid = stateTVar appStateTVar $ AS.createGame uid otherUid

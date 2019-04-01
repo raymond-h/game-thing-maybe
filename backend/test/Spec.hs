@@ -21,6 +21,7 @@ import Data.Functor (($>))
 import System.Environment
 import Control.Concurrent.STM
 import qualified Data.Text as T
+import qualified Data.Map.Strict as M
 
 import Lib (createApp, Environment(..))
 import AppState as AS
@@ -68,22 +69,22 @@ main = hspec $ do
           newUser = User { _userId = "hello", _username = Just "Hello-Person" }
           updatedAppState = appState & userById "hello" ?~ newUser
 
-        _users updatedAppState `shouldBe` [newUser]
+        _users updatedAppState `shouldBe` M.singleton "hello" newUser
 
       it "allows setting to Nothing" $ do
         let
           (_, appState) = ensureUser "hello" initialAppState
           updatedAppState = appState & userById "hello" .~ Nothing
 
-        _users updatedAppState `shouldBe` []
+        updatedAppState^.users `shouldBe` M.empty
 
       it "allows modifying existing user" $ do
         let
           (_, appState) = ensureUser "hello" initialAppState
           updatedAppState = appState & userById "hello" . traverse . username ?~ "Banana"
 
-        appState ^. users . ix 0 . username `shouldBe` Nothing
-        updatedAppState ^. users . ix 0 . username `shouldBe` Just "Banana"
+        appState ^.. users . at "hello" . _Just . username `shouldBe` [Nothing]
+        updatedAppState ^.. users . at "hello" . _Just . username `shouldBe` [Just "Banana"]
 
   describe "Util" $ do
     describe "adjustMatching" $ do
@@ -167,7 +168,7 @@ main = hspec $ do
         addInvite = S.state . AS.addInvite
 
         removeInvite :: AS.Id -> S.State AS.AppState ()
-        removeInvite invId = S.modify $ invites %~ filter (\inv -> _inviteId inv /= Just invId)
+        removeInvite invId = S.modify $ AS.deleteInvite invId
 
         addGame :: AS.UserId -> AS.UserId -> S.State AS.AppState AS.GameAppState
         addGame uid otherUid = S.state $ AS.createGame uid otherUid
@@ -188,7 +189,7 @@ main = hspec $ do
           invite2 = Invite { _inviteId = Just 2, _player1 = "user3", _player2 = "user2" }
           invite3 = Invite { _inviteId = Just 3, _player1 = "someone", _player2 = "else" }
 
-          startAppState = testAppState & invites .~ [invite1, invite2, invite3]
+          startAppState = testAppState & invites .~ M.fromList [(1, invite1), (2, invite2), (3, invite3)]
           (Just user) = getUserById "user2" startAppState
 
           (Right userInvites, _) = runInState startAppState $ testGetInvites user
@@ -264,14 +265,14 @@ main = hspec $ do
       it "allows accepting invite" $ do
         let
           invite = Invite { _inviteId = Just 5, _player1 = "user2", _player2 = "user3" }
-          startAppState = testAppState & invites .~ [invite]
+          startAppState = testAppState & invites .~ M.singleton 5 invite
           (Just user) = getUserById "user2" startAppState
 
           (result, endAppState) = runInState startAppState $
             I.acceptInviteLogic lookupInvite removeInvite addGame user (I.AcceptInviteBody 5)
 
-        endAppState^.invites `shouldNotContain` [invite]
-        endAppState^.gameAppStates `shouldNotBe` []
+        endAppState^.invites `shouldBe` M.empty
+        endAppState^.gameAppStates `shouldNotBe` M.empty
 
   appStateTVar <- runIO $ newTVarIO testAppState
 

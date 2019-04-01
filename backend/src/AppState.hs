@@ -75,9 +75,9 @@ instance ToJSON GameAppState where
     ]
 
 data AppState = AppState {
-  _users :: [User],
-  _invites :: [Invite],
-  _gameAppStates :: [GameAppState]
+  _users :: M.Map UserId User,
+  _invites :: M.Map Id Invite,
+  _gameAppStates :: M.Map GameId GameAppState
 } deriving (Eq, Show)
 
 makeLenses ''AppState
@@ -89,17 +89,15 @@ predicateToAtLike pred = lens getter setter
     setter val mNewVal = adjustMatching pred (const mNewVal) val
 
 userById :: UserId -> Lens' AppState (Maybe User)
-userById userId' = users . predicateToAtLike isUser
-  where
-    isUser u = u^.userId == userId'
+userById userId' = users . at userId'
 
-userByUsername :: T.Text -> Lens' AppState (Maybe User)
-userByUsername username' = users . predicateToAtLike isUser
+-- userByUsername :: T.Text -> Lens' AppState (Maybe User)
+userByUsername username' = users . to M.elems . predicateToAtLike isUser
   where
     isUser u = u^.username == Just username'
 
 initialAppState :: AppState
-initialAppState = AppState { _users = [], _invites = [], _gameAppStates = [] }
+initialAppState = AppState { _users = M.empty, _invites = M.empty, _gameAppStates = M.empty }
 
 getUserById :: UserId -> AppState -> Maybe User
 getUserById userId' appState = find (\u -> u^.userId == userId') (appState^.users)
@@ -108,7 +106,7 @@ hasUser :: UserId -> AppState -> Bool
 hasUser userId' appState = any (\u -> u^.userId == userId') (appState^.users)
 
 addUser :: User -> AppState -> AppState
-addUser user appState = appState & users %~ (++[user])
+addUser user appState = appState & users %~ M.insert (user^.userId) user
 
 updateUser :: User -> AppState -> AppState
 updateUser user = (userById uid)._Just .~ user
@@ -119,7 +117,7 @@ ensureUser userId = runState $ do
   hasUser' <- gets $ hasUser userId
 
   unless hasUser' $
-    users %= (++[initialUser userId])
+    users %= M.insert userId (initialUser userId)
 
   gets $ fromJust . getUserById userId
 
@@ -130,10 +128,14 @@ addInvite :: Invite -> AppState -> (Id, AppState)
 addInvite inv appState = (invId, newAppState)
   where
     invId = nextId (appState^..invites.traverse.inviteId._Just)
-    newAppState = appState & invites %~ (++[inv & inviteId .~ Just invId])
+    newInv = inv & inviteId .~ Just invId
+    newAppState = appState & invites %~ M.insert invId newInv
+
+deleteInvite :: Id -> AppState -> AppState
+deleteInvite invId = invites . (at invId) .~ Nothing
 
 findInvitesForUser :: UserId -> AppState -> [Invite]
-findInvitesForUser userId appState = filter (inviteBelongsToUser userId) (appState ^. invites)
+findInvitesForUser userId = filter (inviteBelongsToUser userId) . M.elems . _invites
 
 foldDefault :: Semigroup s => s -> [s] -> s
 foldDefault = foldr (<>)
@@ -141,35 +143,42 @@ foldDefault = foldr (<>)
 nextId = succ . getMax . foldDefault (Max 0) . map Max
 
 nextGameId :: AppState -> GameId
-nextGameId = nextId . map _gameAppStateId . _gameAppStates
+nextGameId = nextId . M.keys . _gameAppStates
 
 createGame :: UserId -> UserId -> AppState -> (GameAppState, AppState)
 createGame uid otherUid appState =
   let
     newGameId = nextGameId appState
     gas = GameAppState newGameId (uid, otherUid) G.initialState
-    newAppState = appState & gameAppStates %~ (++[gas])
+    newAppState = appState & gameAppStates %~ M.insert newGameId gas
   in
     (gas, newAppState)
 
 acceptInvite :: Invite -> AppState -> (Maybe GameAppState, AppState)
 acceptInvite inv = runState $ do
-  hasInv <- uses invites (inv `elem`)
+  let
+    mInvId :: Maybe Id
+    mInvId = inv^.inviteId
 
-  if hasInv then do
-    invites %= L.delete inv
-    newGameId <- gets nextGameId
+  case mInvId of
+    Nothing -> return Nothing
+    Just invId -> do
+      hasInv <- uses invites (inv `elem`)
 
-    let game = GameAppState newGameId (inv^.player1, inv^.player2) G.initialState
+      if hasInv then do
+        invites %= M.delete invId
+        newGameId <- gets nextGameId
 
-    gameAppStates %= (++[game])
-    return $ Just game
+        let game = GameAppState newGameId (inv^.player1, inv^.player2) G.initialState
 
-  else return Nothing
+        gameAppStates %= M.insert newGameId game
+        return $ Just game
+
+      else return Nothing
 
 -- Test stuff
 testAppState :: AppState
-testAppState = initialAppState { _users = [testAuth "user1", testAuth "user2", testAuth "user3"] }
+testAppState = initialAppState { _users = M.fromList [("user1", testAuth "user1"), ("user2", testAuth "user2"), ("user3", testAuth "user3")] }
 
 testAuth :: T.Text -> User
 testAuth "user1" = User { _userId = "user1", _username = Nothing }
