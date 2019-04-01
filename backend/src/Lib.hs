@@ -142,6 +142,11 @@ createApp environment appState = do
       env <- liftIO getEnvironment
       S.json . listOfPairsToObject $ env
 
+    when isDev $
+      S.get "/.app-state" $ auth >> do
+        as <- liftIO . readTVarIO $ appState
+        S.text . LT.pack $ show as
+
     S.get "/auth" $ do
       userId <- view AS.userId <$> auth
       S.text $ "gj on the authenticating!: " <> LT.pack (show userId)
@@ -155,3 +160,4 @@ createApp environment appState = do
 
     S.get "/invites" $ I.getInvites auth appState
     S.post "/invites" $ I.createInvite auth appState
+    S.post "/invites/accept" $ I.acceptInvite auth appState
