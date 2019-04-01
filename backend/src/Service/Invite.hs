@@ -1,8 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Service.Invite where
 
+import GHC.Generics
 import Control.Applicative
 import Control.Concurrent.STM hiding (check)
 import Control.Lens hiding ((.=))
@@ -17,6 +19,7 @@ import Web.Scotty as S
 import qualified Data.Text as T
 
 import AppState as AS
+import qualified Validation as V
 import AuthUtil (requireUsernameE)
 import Util (stateTVar, sendErrorAndFinish, guardError)
 
@@ -64,7 +67,7 @@ createInvite auth appStateTVar = do
         ById userId' -> return $ appState ^. userById userId'
         ByUsername uname -> return $ appState ^. userByUsername uname
 
-    addInvite inv = modifyTVar' appStateTVar $ AS.addInvite inv
+    addInvite inv = stateTVar appStateTVar $ AS.addInvite inv
 
   result <- liftIO . atomically $ createInviteLogic lookupUser addInvite user body
 
@@ -76,7 +79,7 @@ data LookupCriteria = ById UserId | ByUsername T.Text
 
 createInviteLogic :: Monad m =>
   (LookupCriteria -> m (Maybe User)) ->
-  (Invite -> m ()) ->
+  (Invite -> m AS.Id) ->
   User ->
   InviteBody ->
   m (Either (Status, T.Text) Invite)
@@ -98,8 +101,53 @@ createInviteLogic lookupUser addInvite user body = E.runExceptT $ do
     Just otherUser -> do
       let
         otherUserId = otherUser ^. userId
-        invite = Invite { _player1 = userId', _player2 = otherUserId }
+        invite = Invite { _inviteId = Nothing, _player1 = userId', _player2 = otherUserId }
 
-      E.lift $ addInvite invite
+      invId <- E.lift $ addInvite invite
 
-      return invite
+      return $ invite & AS.inviteId .~ Just invId
+
+data AcceptInviteBody = AcceptInviteBody {
+  acceptInviteBodyInviteId :: AS.Id
+} deriving (Eq, Show, Generic)
+
+instance FromJSON AcceptInviteBody where
+
+acceptInvite :: ActionM User -> TVar AppState -> ActionM ()
+acceptInvite auth appStateTVar = do
+  user <- auth
+  body <- S.jsonData
+
+  let
+    lookupInvite :: AS.Id -> STM (Maybe AS.Invite)
+    lookupInvite invId = find (\inv -> _inviteId inv == Just invId) . view invites <$> readTVar appStateTVar
+
+    removeInvite :: AS.Id -> STM ()
+    removeInvite invId = modifyTVar' appStateTVar $ AS.invites %~ filter (\inv -> AS._inviteId inv /= Just invId)
+
+    addGame :: AS.UserId -> AS.UserId -> STM AS.GameAppState
+    addGame uid otherUid = stateTVar appStateTVar $ AS.createGame uid otherUid
+
+  result <- liftIO . atomically $ acceptInviteLogic lookupInvite removeInvite addGame user body
+
+  case result of
+    Left (status, errMsg) -> do
+      S.status status
+      S.json $ object ["error" .= errMsg]
+    Right r -> S.json r
+
+acceptInviteLogic :: Monad m =>
+  (AS.Id -> m (Maybe Invite)) ->
+  (AS.Id -> m ()) ->
+  (AS.UserId -> AS.UserId -> m GameAppState) ->
+  User ->
+  AcceptInviteBody ->
+  m (Either (Status, T.Text) GameAppState)
+acceptInviteLogic lookupInvite removeInvite addGame user body = E.runExceptT $ do
+  mInvite <- E.lift . lookupInvite $ acceptInviteBodyInviteId body
+  inv <- E.liftEither $ V.noteE (status404, "No such invite") mInvite
+
+  E.lift $ removeInvite (inv^?!inviteId._Just)
+  gas <- E.lift $ addGame (inv^.player1) (inv^.player2)
+
+  return gas

@@ -14,6 +14,10 @@ import qualified Data.Text.Lazy as LT
 
 import Util (toMultiMap)
 
+noteE :: e -> Maybe a -> Either e a
+noteE _ (Just a) = Right a
+noteE e Nothing = Left e
+
 note :: e -> Maybe a -> Validation [e] a
 note _ (Just a) = Success a
 note e Nothing = Failure [e]

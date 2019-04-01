@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-import Data.Maybe (fromJust, isJust)
+import Data.Maybe (isJust)
 import Data.Either (isLeft)
 import Control.Lens hiding ((.=))
 import Data.Aeson hiding (json)
@@ -24,6 +24,7 @@ import qualified Data.Text as T
 
 import Lib (createApp, Environment(..))
 import AppState as AS
+import qualified Game as G
 import qualified Service.UserInfo as UI
 import qualified Service.Invite as I
 import Util (adjustMatching)
@@ -104,6 +105,8 @@ main = hspec $ do
         updateUser :: User -> S.State AS.AppState ()
         updateUser = S.modify . AS.updateUser
 
+        testUpdateUserInfo = UI.updateUserInfoLogic updateUser
+
       it "can get user info" $ do
         let
           user = User { _userId = "whatever", _username = Just "cool-username" }
@@ -116,7 +119,7 @@ main = hspec $ do
           startAppState = addUser user initialAppState
 
           (result, endAppState) = runInState startAppState $
-            UI.updateUserInfoLogic updateUser user (UI.UserInfoBody $ Just "username")
+            testUpdateUserInfo user (UI.UserInfoBody $ Just "username")
 
         endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Just "username"
         result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
@@ -128,7 +131,7 @@ main = hspec $ do
             startAppState = addUser user initialAppState
 
             (result, endAppState) = runInState startAppState $
-              UI.updateUserInfoLogic updateUser user (UI.UserInfoBody $ Just un)
+              testUpdateUserInfo user (UI.UserInfoBody $ Just un)
 
           endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Nothing
           result ^? _Left.(at "username") `shouldSatisfy` isJust
@@ -143,7 +146,7 @@ main = hspec $ do
           startAppState = addUser user initialAppState
 
           (result, endAppState) = runInState startAppState $
-            UI.updateUserInfoLogic updateUser user (UI.UserInfoBody Nothing)
+            testUpdateUserInfo user (UI.UserInfoBody Nothing)
 
         endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Just "username"
         result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
@@ -157,38 +160,50 @@ main = hspec $ do
         lookupInvites :: AS.UserId -> S.State AS.AppState [AS.Invite]
         lookupInvites = S.gets . AS.findInvitesForUser
 
-        addInvite :: AS.Invite -> S.State AS.AppState ()
-        addInvite = S.modify . AS.addInvite
+        lookupInvite :: AS.Id -> S.State AS.AppState (Maybe AS.Invite)
+        lookupInvite invId = S.gets $ find (\inv -> _inviteId inv == Just invId) . view invites
+
+        addInvite :: AS.Invite -> S.State AS.AppState AS.Id
+        addInvite = S.state . AS.addInvite
+
+        removeInvite :: AS.Id -> S.State AS.AppState ()
+        removeInvite invId = S.modify $ invites %~ filter (\inv -> _inviteId inv /= Just invId)
+
+        addGame :: AS.UserId -> AS.UserId -> S.State AS.AppState AS.GameAppState
+        addGame uid otherUid = S.state $ AS.createGame uid otherUid
+
+        testGetInvites = I.getInvitesLogic lookupInvites
+        testCreateInvite = I.createInviteLogic lookupUser addInvite
 
       it "disallows getting invites if no username set" $ do
         let
-          user = fromJust $ getUserById "user1" testAppState
-          (result, _) = runInState testAppState $ I.getInvitesLogic lookupInvites user
+          (Just user) = getUserById "user1" testAppState
+          (result, _) = runInState testAppState $ testGetInvites user
 
         result `shouldBe` Left (forbidden403, "Must set username first")
 
       it "fetches invites for user" $ do
         let
-          invite1 = Invite { _player1 = "user2", _player2 = "user3" }
-          invite2 = Invite { _player1 = "user3", _player2 = "user2" }
-          invite3 = Invite { _player1 = "someone", _player2 = "else" }
+          invite1 = Invite { _inviteId = Just 1, _player1 = "user2", _player2 = "user3" }
+          invite2 = Invite { _inviteId = Just 2, _player1 = "user3", _player2 = "user2" }
+          invite3 = Invite { _inviteId = Just 3, _player1 = "someone", _player2 = "else" }
 
-          startAppState = AS.addInvite invite1 $ AS.addInvite invite2 $ AS.addInvite invite3 $ testAppState
-          user = fromJust $ getUserById "user2" startAppState
+          startAppState = testAppState & invites .~ [invite1, invite2, invite3]
+          (Just user) = getUserById "user2" startAppState
 
-          (Right invites, _) = runInState startAppState $ I.getInvitesLogic lookupInvites user
+          (Right userInvites, _) = runInState startAppState $ testGetInvites user
 
-        invites `shouldContain` [invite1]
-        invites `shouldContain` [invite2]
-        invites `shouldNotContain` [invite3]
+        userInvites `shouldContain` [invite1]
+        userInvites `shouldContain` [invite2]
+        userInvites `shouldNotContain` [invite3]
 
       it "disallows creating invites if no username set" $ do
         let
           startAppState = testAppState
-          user = fromJust $ getUserById "user1" startAppState
+          (Just user) = getUserById "user1" startAppState
 
           (result, endAppState) = runInState startAppState $
-            I.createInviteLogic lookupUser addInvite user (I.InviteBodyUserId "user3")
+            testCreateInvite user (I.InviteBodyUserId "user3")
 
         findInvitesForUser "user1" endAppState `shouldBe` []
         findInvitesForUser "user3" endAppState `shouldBe` []
@@ -197,12 +212,12 @@ main = hspec $ do
       it "creates invites by user ID" $ do
         let
           startAppState = testAppState
-          user = fromJust $ getUserById "user2" startAppState
+          (Just user) = getUserById "user2" startAppState
 
           (result, endAppState) = runInState startAppState $
-            I.createInviteLogic lookupUser addInvite user (I.InviteBodyUserId "user3")
+            testCreateInvite user (I.InviteBodyUserId "user3")
 
-          expectedInvite = Invite { _player1 = "user2", _player2 = "user3" }
+          expectedInvite = Invite { _inviteId = Just 1, _player1 = "user2", _player2 = "user3" }
 
         findInvitesForUser "user2" endAppState `shouldBe` [expectedInvite]
         findInvitesForUser "user3" endAppState `shouldBe` [expectedInvite]
@@ -211,12 +226,12 @@ main = hspec $ do
       it "creates invites by username" $ do
         let
           startAppState = testAppState
-          user = fromJust $ getUserById "user2" startAppState
+          (Just user) = getUserById "user2" startAppState
 
           (result, endAppState) = runInState startAppState $
-            I.createInviteLogic lookupUser addInvite user (I.InviteBodyUsername "anotheruser")
+            testCreateInvite user (I.InviteBodyUsername "anotheruser")
 
-          expectedInvite = Invite { _player1 = "user2", _player2 = "user3" }
+          expectedInvite = Invite { _inviteId = Just 1, _player1 = "user2", _player2 = "user3" }
 
         findInvitesForUser "user2" endAppState `shouldBe` [expectedInvite]
         findInvitesForUser "user3" endAppState `shouldBe` [expectedInvite]
@@ -225,10 +240,10 @@ main = hspec $ do
       it "reports error if no user with given ID exists" $ do
         let
           startAppState = testAppState
-          user = fromJust $ getUserById "user2" startAppState
+          (Just user) = getUserById "user2" startAppState
 
           (result, endAppState) = runInState startAppState $
-            I.createInviteLogic lookupUser addInvite user (I.InviteBodyUserId "id-does-not-exist")
+            testCreateInvite user (I.InviteBodyUserId "id-does-not-exist")
 
         findInvitesForUser "user2" endAppState `shouldBe` []
         findInvitesForUser "user3" endAppState `shouldBe` []
@@ -237,14 +252,26 @@ main = hspec $ do
       it "reports error if no user with given username exists" $ do
         let
           startAppState = testAppState
-          user = fromJust $ getUserById "user2" startAppState
+          (Just user) = getUserById "user2" startAppState
 
           (result, endAppState) = runInState startAppState $
-            I.createInviteLogic lookupUser addInvite user (I.InviteBodyUsername "uname-does-not-exist")
+            testCreateInvite user (I.InviteBodyUsername "uname-does-not-exist")
 
         findInvitesForUser "user2" endAppState `shouldBe` []
         findInvitesForUser "user3" endAppState `shouldBe` []
         result `shouldBe` Left (badRequest400, "No such user")
+
+      it "allows accepting invite" $ do
+        let
+          invite = Invite { _inviteId = Just 5, _player1 = "user2", _player2 = "user3" }
+          startAppState = testAppState & invites .~ [invite]
+          (Just user) = getUserById "user2" startAppState
+
+          (result, endAppState) = runInState startAppState $
+            I.acceptInviteLogic lookupInvite removeInvite addGame user (I.AcceptInviteBody 5)
+
+        endAppState^.invites `shouldNotContain` [invite]
+        endAppState^.gameAppStates `shouldNotBe` []
 
   appStateTVar <- runIO $ newTVarIO testAppState
 

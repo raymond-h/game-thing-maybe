@@ -21,6 +21,7 @@ import qualified Data.Map.Strict as M
 import Util (adjustMatching)
 import qualified Game as G
 
+type Id = Int
 type UserId = T.Text
 
 data User = User {
@@ -33,6 +34,7 @@ makeLenses ''User
 initialUser userId = User { _userId = userId, _username = Nothing }
 
 data Invite = Invite {
+  _inviteId :: Maybe Id,
   _player1 :: UserId,
   _player2 :: UserId
 } deriving (Eq, Show)
@@ -41,11 +43,13 @@ makeLenses ''Invite
 
 instance FromJSON Invite where
   parseJSON = withObject "Invite" $ \v -> Invite
-    <$> v .: "player1"
+    <$> v .: "id"
+    <*> v .: "player1"
     <*> v .: "player2"
 
 instance ToJSON Invite where
   toJSON invite = object [
+      "id" .= (invite^.inviteId),
       "player1" .= (invite^.player1),
       "player2" .= (invite^.player2)
     ]
@@ -122,8 +126,11 @@ ensureUser userId = runState $ do
 setUserUsername :: UserId -> T.Text -> AppState -> (Maybe User, AppState)
 setUserUsername userId newUsername = userById userId <%~ _Just . username ?~ newUsername
 
-addInvite :: Invite -> AppState -> AppState
-addInvite inv = invites %~ (++[inv])
+addInvite :: Invite -> AppState -> (Id, AppState)
+addInvite inv appState = (invId, newAppState)
+  where
+    invId = nextId (appState^..invites.traverse.inviteId._Just)
+    newAppState = appState & invites %~ (++[inv & inviteId .~ Just invId])
 
 findInvitesForUser :: UserId -> AppState -> [Invite]
 findInvitesForUser userId appState = filter (inviteBelongsToUser userId) (appState ^. invites)
@@ -135,6 +142,15 @@ nextId = succ . getMax . foldDefault (Max 0) . map Max
 
 nextGameId :: AppState -> GameId
 nextGameId = nextId . map _gameAppStateId . _gameAppStates
+
+createGame :: UserId -> UserId -> AppState -> (GameAppState, AppState)
+createGame uid otherUid appState =
+  let
+    newGameId = nextGameId appState
+    gas = GameAppState newGameId (uid, otherUid) G.initialState
+    newAppState = appState & gameAppStates %~ (++[gas])
+  in
+    (gas, newAppState)
 
 acceptInvite :: Invite -> AppState -> (Maybe GameAppState, AppState)
 acceptInvite inv = runState $ do
