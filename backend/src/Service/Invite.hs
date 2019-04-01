@@ -120,7 +120,7 @@ acceptInvite auth appStateTVar = do
 
   let
     lookupInvite :: AS.Id -> STM (Maybe AS.Invite)
-    lookupInvite invId = find (\inv -> _inviteId inv == Just invId) . view invites <$> readTVar appStateTVar
+    lookupInvite invId = view (invites . at invId) <$> readTVar appStateTVar
 
     removeInvite :: AS.Id -> STM ()
     removeInvite invId = modifyTVar' appStateTVar $ AS.deleteInvite invId
@@ -146,6 +146,8 @@ acceptInviteLogic :: Monad m =>
 acceptInviteLogic lookupInvite removeInvite addGame user body = E.runExceptT $ do
   mInvite <- E.lift . lookupInvite $ acceptInviteBodyInviteId body
   inv <- E.liftEither $ V.noteE (status404, "No such invite") mInvite
+
+  E.liftEither $ V.noteE (status403, "User not recipient of invite") $ guard (inv^.player2 == user^.userId)
 
   E.lift $ removeInvite (inv^?!inviteId._Just)
   gas <- E.lift $ addGame (inv^.player1) (inv^.player2)

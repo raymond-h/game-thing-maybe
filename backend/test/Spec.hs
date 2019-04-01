@@ -216,6 +216,7 @@ main = hspec $ do
 
         testGetInvites = I.getInvitesLogic lookupInvites
         testCreateInvite = I.createInviteLogic lookupUser addInvite
+        testAcceptInvite = I.acceptInviteLogic lookupInvite removeInvite addGame
 
       it "disallows getting invites if no username set" $ do
         let
@@ -307,13 +308,38 @@ main = hspec $ do
         let
           invite = Invite { _inviteId = Just 5, _player1 = "user2", _player2 = "user3" }
           startAppState = testAppState & invites .~ M.singleton 5 invite
-          (Just user) = getUserById "user2" startAppState
+          (Just user) = getUserById "user3" startAppState
 
-          (result, endAppState) = runInState startAppState $
-            I.acceptInviteLogic lookupInvite removeInvite addGame user (I.AcceptInviteBody 5)
+          (result, endAppState) = runInState startAppState $ testAcceptInvite user (I.AcceptInviteBody 5)
+
+          expectedGame = GameAppState 1 ("user2", "user3") G.initialState
 
         endAppState^.invites `shouldBe` M.empty
-        endAppState^.gameAppStates `shouldBe` M.singleton 1 (GameAppState 1 ("user2", "user3") G.initialState)
+        endAppState^.gameAppStates `shouldBe` M.singleton 1 expectedGame
+        result `shouldBe` Right expectedGame
+
+      it "reports error if accepting non-existing invite" $ do
+        let
+          startAppState = testAppState
+          (Just user) = getUserById "user2" startAppState
+
+          (result, endAppState) = runInState startAppState $ testAcceptInvite user (I.AcceptInviteBody 5)
+
+        endAppState^.gameAppStates `shouldBe` M.empty
+        result `shouldBe` Left (status404, "No such invite")
+
+      forM_ ["user1", "user2"] $ \uname ->
+        it ("reports error if not exactly recipient of invite (" <> T.unpack uname <> ")") $ do
+          let
+            invite = Invite { _inviteId = Just 5, _player1 = "user2", _player2 = "user3" }
+            startAppState = testAppState & invites .~ M.singleton 5 invite
+            (Just user) = getUserById uname startAppState
+
+            (result, endAppState) = runInState startAppState $ testAcceptInvite user (I.AcceptInviteBody 5)
+
+          endAppState^.invites `shouldBe` M.singleton 5 invite
+          endAppState^.gameAppStates `shouldBe` M.empty
+          result `shouldBe` Left (status403, "User not recipient of invite")
 
   appStateTVar <- runIO $ newTVarIO testAppState
 
