@@ -5,6 +5,8 @@ import VueRx from 'vue-rx';
 import App from './components/App';
 import router from './router';
 
+import './api/pusher';
+
 Vue.use(VueRouter);
 Vue.use(VueRx);
 

@@ -22,9 +22,11 @@ import Web.Scotty as S
 import qualified Data.Text as T
 import qualified Data.Map.Strict as M
 
+import qualified Network.Pusher as P
+
 import AppState as AS
 import Validation as V
-import Util (Updater, stateTVar)
+import Util (Updater, stateTVar, pusherizedUserId)
 
 newtype UserInfoBody = UserInfoBody {
   userInfoUsername :: Maybe T.Text
@@ -59,13 +61,13 @@ getUserInfo auth = S.json . getUserInfoLogic =<< auth
 getUserInfoLogic :: User -> UserInfoBody
 getUserInfoLogic user = UserInfoBody { userInfoUsername = user ^. username }
 
-updateUserInfo :: ActionM User -> TVar AppState -> ActionM ()
-updateUserInfo auth appStateTVar = do
+updateUserInfo :: ActionM User -> TVar AppState -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
+updateUserInfo auth appStateTVar pushClient = do
   user <- auth
   body <- S.jsonData
-  let updateUser = modifyTVar' appStateTVar . AS.updateUser
+  let updateUser user = liftIO $ atomically $ modifyTVar' appStateTVar $ AS.updateUser user
 
-  result <- liftIO . atomically $ updateUserInfoLogic updateUser user body
+  result <- updateUserInfoLogic updateUser pushClient user body
 
   case result of
     Left e -> do
@@ -75,10 +77,11 @@ updateUserInfo auth appStateTVar = do
 
 updateUserInfoLogic :: Monad m =>
     (User -> m ()) ->
+    ([P.Channel] -> P.Event -> P.EventData -> m ()) ->
     User ->
     UserInfoBody ->
     m (Either (M.Map T.Text [T.Text]) UserInfoBody)
-updateUserInfoLogic updateUser user body = E.runExceptT $ do
+updateUserInfoLogic updateUser pushClient user body = E.runExceptT $ do
   userInfo <- E.liftEither . V.handleValidationE . validateUserInfoBody $ body
 
   let
@@ -87,5 +90,10 @@ updateUserInfoLogic updateUser user body = E.runExceptT $ do
         username `assign` Just newUsername
 
   E.lift $ updateUser newUser
+
+  when (newUser /= user) $ do
+    let uid = pusherizedUserId (user^.userId)
+    -- TODO: Send events only to private channel of user who did the changing
+    E.lift $ pushClient [P.Channel P.Public (uid <> "-user-info")] "update-user-info" ""
 
   return $ UserInfoBody { userInfoUsername = newUser ^. username }

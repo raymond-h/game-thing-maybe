@@ -1,4 +1,6 @@
 import * as rxjs from 'rxjs';
+import { flatMap } from 'rxjs/operators';
+
 import authService from './auth';
 
 function fetchJsonObs(url, opts = {}) {
@@ -32,4 +34,17 @@ export function updateUserInfo(newUserInfo) {
     },
     body: JSON.stringify(newUserInfo)
   });
+}
+
+export function getUserInfoUpdates(userInfoChan) {
+  return rxjs.merge(
+    getUserInfo(),
+    rxjs.fromEventPattern(
+      handler => userInfoChan.bind('update-user-info', handler),
+      handler => userInfoChan.unbind('update-user-info', handler)
+    )
+      .pipe(
+        flatMap(() => getUserInfo())
+      )
+  );
 }

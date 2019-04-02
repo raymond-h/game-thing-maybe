@@ -38,7 +38,8 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # using the same syntax as the packages field.
 # (e.g., acme-missiles-0.3)
-# extra-deps: []
+extra-deps:
+- pusher-http-haskell-1.5.1.6@sha256:10ed707f94becb029c353970c82c209185775df991ca09e1937a633bf1de33e4
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

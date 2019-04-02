@@ -77,7 +77,8 @@ instance ToJSON GameAppState where
 data AppState = AppState {
   _users :: M.Map UserId User,
   _invites :: M.Map Id Invite,
-  _gameAppStates :: M.Map GameId GameAppState
+  _gameAppStates :: M.Map GameId GameAppState,
+  _pushCount :: Integer -- highly temporary!!
 } deriving (Eq, Show)
 
 makeLenses ''AppState
@@ -104,7 +105,7 @@ userByUsername username' = users . mapListIso . predicateToAtLike pred
     pred u = u^.username == Just username'
 
 initialAppState :: AppState
-initialAppState = AppState { _users = M.empty, _invites = M.empty, _gameAppStates = M.empty }
+initialAppState = AppState { _users = M.empty, _invites = M.empty, _gameAppStates = M.empty, _pushCount = 0 }
 
 getUserById :: UserId -> AppState -> Maybe User
 getUserById userId' appState = find (\u -> u^.userId == userId') (appState^.users)

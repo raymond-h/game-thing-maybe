@@ -5,12 +5,32 @@
 </template>
 
 <script>
+import { pluck, filter, flatMap } from 'rxjs/operators';
+
+import * as api from '../api';
 import authService from '../api/auth';
+import pusher from '../api/pusher';
 
 export default {
+  mounted() {
+    const userId = authService.userId;
+    this.userInfoChan = pusher.subscribe(`${userId.replace(/\|/, ';')}-user-info`);
+  },
+
+  data() {
+    return {
+      userInfoChan: null
+    };
+  },
+
   subscriptions() {
     return {
-      userInfo: authService.userInfo$
+      userInfo: this.$watchAsObservable('userInfoChan')
+        .pipe(
+          pluck('newValue'),
+          filter(v => v != null),
+          flatMap(api.getUserInfoUpdates)
+        )
     };
   }
 };

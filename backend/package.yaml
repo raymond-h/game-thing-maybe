@@ -46,6 +46,7 @@ dependencies:
 - hspec-wai
 - hspec-wai-json
 - QuickCheck
+- pusher-http-haskell
 
 library:
   source-dirs: src

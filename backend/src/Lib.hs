@@ -27,6 +27,8 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as LT
 import qualified Web.Scotty as S
 
+import qualified Network.Pusher as P
+
 import Auth
 import Validation as V
 import Util (queryTVar, modifyTVarState)
@@ -79,6 +81,20 @@ checkError cond status errMsg = unless cond $ do
   S.json $ object ["error" .= errMsg]
   S.finish
 
+pusherCredentialsFromEnv :: IO P.Credentials
+pusherCredentialsFromEnv = do
+  pusherAppId <- getEnv "PUSHER_APP_ID"
+  pusherAppKey <- getEnv "PUSHER_APP_KEY"
+  pusherAppSecret <- getEnv "PUSHER_APP_SECRET"
+  pusherCluster <- lookupEnv "PUSHER_CLUSTER"
+
+  return $ P.Credentials {
+      P.credentialsAppID = read pusherAppId,
+      P.credentialsAppKey = BS.pack pusherAppKey,
+      P.credentialsAppSecret = BS.pack pusherAppSecret,
+      P.credentialsCluster = P.Cluster . T.pack <$> pusherCluster
+    }
+
 data Environment = Production | Development | Test deriving (Eq, Show)
 
 runApp :: IO ()
@@ -100,6 +116,10 @@ createApp environment appState = do
 
   (Just audience) <- preview stringOrUri <$> getEnv "JWT_AUDIENCE"
   (Just issuer) <- preview stringOrUri <$> getEnv "JWT_ISSUER"
+
+  mPusher <- if isTest
+    then return Nothing
+    else Just <$> (P.getPusher =<< pusherCredentialsFromEnv)
 
   mJwkSetOrError <- if environment == Test
     then return Nothing
@@ -125,6 +145,14 @@ createApp environment appState = do
     auth = case mJwkSetOrError of
       Nothing -> testAuthenticate isTest appState
       Just (Right jwkSet) -> authenticate appState jwtValidationSettings jwkSet
+
+    pushClient :: [P.Channel] -> P.Event -> P.EventData -> S.ActionM ()
+    pushClient channels event eventData = do
+      case mPusher of
+        Nothing -> return ()
+        Just pusher -> do
+          P.trigger pusher channels event eventData Nothing
+          return ()
 
   S.scottyApp $ do
     unless isTest $
@@ -156,7 +184,7 @@ createApp environment appState = do
       S.json userId
 
     S.get "/user-info" $ UI.getUserInfo auth
-    S.put "/user-info" $ UI.updateUserInfo auth appState
+    S.put "/user-info" $ UI.updateUserInfo auth appState pushClient
 
     S.get "/invites" $ I.getInvites auth appState
     S.post "/invites" $ I.createInvite auth appState

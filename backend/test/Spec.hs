@@ -22,6 +22,7 @@ import System.Environment
 import Control.Concurrent.STM
 import qualified Data.Text as T
 import qualified Data.Map.Strict as M
+import qualified Network.Pusher as P
 
 import Lib (createApp, Environment(..))
 import AppState as AS
@@ -147,7 +148,11 @@ main = hspec $ do
         updateUser :: User -> S.State AS.AppState ()
         updateUser = S.modify . AS.updateUser
 
-        testUpdateUserInfo = UI.updateUserInfoLogic updateUser
+        -- TODO: Need to make this not ignore input
+        pushClient :: [P.Channel] -> P.Event -> P.EventData -> S.State AS.AppState ()
+        pushClient _ _ _ = AS.pushCount += 1
+
+        testUpdateUserInfo = UI.updateUserInfoLogic updateUser pushClient
 
       it "can get user info" $ do
         let
@@ -164,6 +169,7 @@ main = hspec $ do
             testUpdateUserInfo user (UI.UserInfoBody $ Just "username")
 
         endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Just "username"
+        endAppState^.pushCount `shouldBe` 1
         result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
 
       let
@@ -176,6 +182,7 @@ main = hspec $ do
               testUpdateUserInfo user (UI.UserInfoBody $ Just un)
 
           endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Nothing
+          endAppState^.pushCount `shouldBe` 0
           result ^? _Left.(at "username") `shouldSatisfy` isJust
 
       it "disallows too long username" $ usernameValidationTest "veryveryverylongusername"
@@ -191,6 +198,7 @@ main = hspec $ do
             testUpdateUserInfo user (UI.UserInfoBody Nothing)
 
         endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Just "username"
+        endAppState^.pushCount `shouldBe` 0
         result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
 
     describe "invite service" $ do

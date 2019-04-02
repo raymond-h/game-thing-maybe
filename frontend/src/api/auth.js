@@ -41,6 +41,14 @@ export class AuthService {
     return localStorage.getItem('access_token');
   }
 
+  get accessTokenInfo() {
+    return jwtDecode(this.accessToken);
+  }
+
+  get userId() {
+    return this.accessTokenInfo.sub;
+  }
+
   get expiresAt() {
     const expiresAtStr = localStorage.getItem('expires_at');
 

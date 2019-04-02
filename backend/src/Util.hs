@@ -9,6 +9,7 @@ import qualified Data.Map.Strict as M
 import Control.Monad.Trans (liftIO, MonadIO)
 import Control.Concurrent.STM hiding (check)
 import Web.Scotty as S
+import qualified Data.Text as T
 
 type Updater m s r = (s -> (r, s)) -> m r
 
@@ -48,3 +49,9 @@ adjustMatching _ f [] = maybe [] pure $ f Nothing
 adjustMatching pred f (a:as)
   | pred a = maybe as (:as) $ f (Just a)
   | otherwise = a:adjustMatching pred f as
+
+pusherizedUserId :: T.Text -> T.Text
+pusherizedUserId = T.map replaceChar
+  where
+    replaceChar '|' = ';'
+    replaceChar c = c
