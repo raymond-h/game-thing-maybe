@@ -372,9 +372,8 @@ main = hspec $ do
             }
           user = User { _userId = "hello", _username = Just "SomeUname" }
           chan = P.Channel P.Private "hello-user-info"
-          body = PA.PusherAuthBody "123.456" chan
 
-        (PA.paResAuthToken . fromJust) (PA.pusherAuthenticateLogic creds user body)
+        (PA.paResAuthToken . fromJust) (PA.pusherAuthenticateLogic creds user "123.456" chan)
           `shouldBe`
           (P.authenticatePrivate creds "123.456" chan)
 
@@ -382,17 +381,15 @@ main = hspec $ do
         let
           creds = undefined -- should never be used by the test
           user = User { _userId = "hello", _username = Just "SomeUname" }
-          body = PA.PusherAuthBody "123.456" (P.Channel P.Private "user1-user-info")
 
-        PA.pusherAuthenticateLogic creds user body `shouldBe` Nothing
+        PA.pusherAuthenticateLogic creds user "123.456" (P.Channel P.Private "user1-user-info") `shouldBe` Nothing
 
       it "prevents authenticating for public channels" $ do
         let
           creds = undefined -- should never be used by the test
           user = User { _userId = "hello", _username = Just "SomeUname" }
-          body = PA.PusherAuthBody "123.456" (P.Channel P.Public "some-whatever-channel")
 
-        PA.pusherAuthenticateLogic creds user body `shouldBe` Nothing
+        PA.pusherAuthenticateLogic creds user "123.456" (P.Channel P.Public "some-whatever-channel") `shouldBe` Nothing
 
   appStateTVar <- runIO $ newTVarIO testAppState
 
