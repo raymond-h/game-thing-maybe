@@ -14,7 +14,7 @@ import pusher from '../api/pusher';
 export default {
   mounted() {
     const userId = authService.userId;
-    this.userInfoChan = pusher.subscribe(`${userId.replace(/\|/, ';')}-user-info`);
+    this.userInfoChan = pusher.subscribe(`private-${userId.replace(/\|/, ';')}-user-info`);
   },
 
   data() {

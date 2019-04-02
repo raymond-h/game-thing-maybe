@@ -37,6 +37,7 @@ import qualified Auth0Management as A0M
 
 import qualified Service.UserInfo as UI
 import qualified Service.Invite as I
+import qualified Service.PusherAuth as PA
 
 getEnv' :: Read r => String -> IO (Maybe r)
 getEnv' var = do
@@ -117,9 +118,11 @@ createApp environment appState = do
   (Just audience) <- preview stringOrUri <$> getEnv "JWT_AUDIENCE"
   (Just issuer) <- preview stringOrUri <$> getEnv "JWT_ISSUER"
 
-  mPusher <- if isTest
-    then return Nothing
-    else Just <$> (P.getPusher =<< pusherCredentialsFromEnv)
+  mCreds <- if isTest then return Nothing else Just <$> pusherCredentialsFromEnv
+
+  mPusher <- case mCreds of
+    Just creds -> Just <$> P.getPusher creds
+    Nothing -> return Nothing
 
   mJwkSetOrError <- if environment == Test
     then return Nothing
@@ -178,6 +181,8 @@ createApp environment appState = do
     S.get "/auth" $ do
       userId <- view AS.userId <$> auth
       S.text $ "gj on the authenticating!: " <> LT.pack (show userId)
+
+    when (isJust mCreds) $ S.post "/pusher/auth" $ PA.pusherAuthenticate auth (fromJust mCreds)
 
     S.get "/me" $ do
       userId <- view AS.userId <$> auth

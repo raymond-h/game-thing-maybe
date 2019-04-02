@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, fromJust)
 import Data.Either (isLeft)
 import Control.Lens hiding ((.=))
 import Data.Aeson hiding (json)
@@ -29,6 +29,7 @@ import AppState as AS
 import qualified Game as G
 import qualified Service.UserInfo as UI
 import qualified Service.Invite as I
+import qualified Service.PusherAuth as PA
 import Util (adjustMatching)
 
 testAppState :: AppState
@@ -359,6 +360,39 @@ main = hspec $ do
           endAppState^.invites `shouldBe` M.singleton 5 invite
           endAppState^.gameAppStates `shouldBe` M.empty
           result `shouldBe` Left (status403, "User not recipient of invite")
+
+    describe "pusher auth service" $ do
+      it "allows authenticating a user for private channels" $ do
+        let
+          creds = P.Credentials {
+              P.credentialsAppID = 123,
+              P.credentialsAppKey = "some-key",
+              P.credentialsAppSecret = "some-secret",
+              P.credentialsCluster = Nothing
+            }
+          user = User { _userId = "hello", _username = Just "SomeUname" }
+          chan = P.Channel P.Private "hello-user-info"
+          body = PA.PusherAuthBody "123.456" chan
+
+        (PA.paResAuthToken . fromJust) (PA.pusherAuthenticateLogic creds user body)
+          `shouldBe`
+          (P.authenticatePrivate creds "123.456" chan)
+
+      it "prevents authenticating for wrong channels" $ do
+        let
+          creds = undefined -- should never be used by the test
+          user = User { _userId = "hello", _username = Just "SomeUname" }
+          body = PA.PusherAuthBody "123.456" (P.Channel P.Private "user1-user-info")
+
+        PA.pusherAuthenticateLogic creds user body `shouldBe` Nothing
+
+      it "prevents authenticating for public channels" $ do
+        let
+          creds = undefined -- should never be used by the test
+          user = User { _userId = "hello", _username = Just "SomeUname" }
+          body = PA.PusherAuthBody "123.456" (P.Channel P.Public "some-whatever-channel")
+
+        PA.pusherAuthenticateLogic creds user body `shouldBe` Nothing
 
   appStateTVar <- runIO $ newTVarIO testAppState
 

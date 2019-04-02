@@ -93,7 +93,6 @@ updateUserInfoLogic updateUser pushClient user body = E.runExceptT $ do
 
   when (newUser /= user) $ do
     let uid = pusherizedUserId (user^.userId)
-    -- TODO: Send events only to private channel of user who did the changing
-    E.lift $ pushClient [P.Channel P.Public (uid <> "-user-info")] "update-user-info" ""
+    E.lift $ pushClient [P.Channel P.Private (uid <> "-user-info")] "update-user-info" ""
 
   return $ UserInfoBody { userInfoUsername = newUser ^. username }

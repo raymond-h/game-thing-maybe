@@ -22,6 +22,16 @@ export function someJson() {
   return fetchJsonObs(apiUrl + '/some-json');
 }
 
+export function authenticatePusher(channel, socketId) {
+  return fetchJsonObs(apiUrl + '/pusher/auth', {
+    method: 'POST',
+    body: new URLSearchParams({
+      socket_id: socketId,
+      channel_name: channel.name
+    })
+  });
+}
+
 export function getUserInfo() {
   return fetchJsonObs(apiUrl + '/user-info');
 }
