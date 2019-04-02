@@ -7,7 +7,7 @@ Pusher.logToConsole = true;
 export default new Pusher(process.env.PUSHER_APP_KEY, {
   cluster: process.env.PUSHER_CLUSTER,
 
-  authorizer(chan, opts) {
+  authorizer(chan, _opts) {
     return {
       authorize(socketId, cb) {
         api.authenticatePusher(chan, socketId)
