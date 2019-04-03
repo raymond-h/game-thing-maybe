@@ -24,6 +24,7 @@ import AppState as AS
 import qualified Validation as V
 import AuthUtil (requireUsernameE)
 import Util (stateTVar, sendErrorAndFinish, guardError, pusherizedUserId)
+import PusherCommon
 
 data InviteBody =
   InviteBodyUserId UserId |
@@ -71,7 +72,7 @@ createInvite auth appStateTVar pushClient = do
 
     addInvite inv = liftIO . atomically $ stateTVar appStateTVar $ AS.addInvite inv
 
-  result <- createInviteLogic lookupUser addInvite pushClient user body
+  result <- createInviteLogic lookupUser addInvite (pushClient . fmap toChannel) user body
 
   case result of
     Left (status, msg) -> sendErrorAndFinish status msg
@@ -82,7 +83,7 @@ data LookupCriteria = ById UserId | ByUsername T.Text
 createInviteLogic :: Monad m =>
   (LookupCriteria -> m (Maybe User)) ->
   (Invite -> m AS.Id) ->
-  ([P.Channel] -> P.Event -> P.EventData -> m ()) ->
+  ([EventChannel] -> P.Event -> P.EventData -> m ()) ->
   User ->
   InviteBody ->
   m (Either (Status, T.Text) Invite)
@@ -110,10 +111,7 @@ createInviteLogic lookupUser addInvite pushClient user body = E.runExceptT $ do
 
       invId <- E.lift $ addInvite invite
 
-      E.lift $ pushClient [
-          P.Channel P.Private (pusherizedUserId userId' <> "-invites"),
-          P.Channel P.Private (pusherizedUserId otherUserId <> "-invites")
-        ] "update-invites" ""
+      E.lift $ pushClient [Invites userId', Invites otherUserId] "update-invites" ""
 
       return $ invite & AS.inviteId .~ Just invId
 
@@ -141,7 +139,7 @@ acceptInvite auth appStateTVar pushClient = do
     addGame :: AS.UserId -> AS.UserId -> S.ActionM AS.GameAppState
     addGame uid otherUid = liftIO $ atomically $ stateTVar appStateTVar $ AS.createGame uid otherUid
 
-  result <- acceptInviteLogic lookupInvite removeInvite addGame pushClient user body
+  result <- acceptInviteLogic lookupInvite removeInvite addGame (pushClient . fmap toChannel) user body
 
   case result of
     Left (status, errMsg) -> do
@@ -153,7 +151,7 @@ acceptInviteLogic :: Monad m =>
   (AS.Id -> m (Maybe Invite)) ->
   (AS.Id -> m ()) ->
   (AS.UserId -> AS.UserId -> m GameAppState) ->
-  ([P.Channel] -> P.Event -> P.EventData -> m ()) ->
+  ([EventChannel] -> P.Event -> P.EventData -> m ()) ->
   User ->
   AcceptInviteBody ->
   m (Either (Status, T.Text) GameAppState)
@@ -166,9 +164,6 @@ acceptInviteLogic lookupInvite removeInvite addGame pushClient user body = E.run
   E.lift $ removeInvite (inv^?!inviteId._Just)
   gas <- E.lift $ addGame (inv^.player1) (inv^.player2)
 
-  E.lift $ pushClient [
-      P.Channel P.Private (pusherizedUserId (inv^.player1) <> "-invites"),
-      P.Channel P.Private (pusherizedUserId (inv^.player2) <> "-invites")
-    ] "update-invites" ""
+  E.lift $ pushClient [Invites (inv^.player1), Invites (inv^.player2)] "update-invites" ""
 
   return gas

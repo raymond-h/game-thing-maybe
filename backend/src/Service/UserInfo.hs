@@ -29,6 +29,7 @@ import qualified Network.Pusher as P
 import AppState as AS
 import Validation as V
 import Util (Updater, stateTVar, pusherizedUserId)
+import PusherCommon
 
 newtype UserInfoBody = UserInfoBody {
   userInfoUsername :: Maybe T.Text
@@ -69,7 +70,7 @@ updateUserInfo auth appStateTVar pushClient = do
   body <- S.jsonData
   let updateUser user = liftIO $ atomically $ modifyTVar' appStateTVar $ AS.updateUser user
 
-  result <- updateUserInfoLogic updateUser pushClient user body
+  result <- updateUserInfoLogic updateUser (pushClient . fmap toChannel) user body
 
   case result of
     Left e -> do
@@ -79,7 +80,7 @@ updateUserInfo auth appStateTVar pushClient = do
 
 updateUserInfoLogic :: Monad m =>
     (User -> m ()) ->
-    ([P.Channel] -> P.Event -> P.EventData -> m ()) ->
+    ([EventChannel] -> P.Event -> P.EventData -> m ()) ->
     User ->
     UserInfoBody ->
     m (Either (M.Map T.Text [T.Text]) UserInfoBody)
@@ -96,7 +97,6 @@ updateUserInfoLogic updateUser pushClient user body = E.runExceptT $ do
   let newUserInfo = UserInfoBody { userInfoUsername = newUser ^. username }
 
   when (newUser /= user) $ do
-    let uid = pusherizedUserId (user^.userId)
-    E.lift $ pushClient [P.Channel P.Private (uid <> "-user-info")] "update-user-info" $ LT.toStrict $ encodeToLazyText newUserInfo
+    E.lift $ pushClient [UserInfo (user^.userId)] "update-user-info" $ LT.toStrict $ encodeToLazyText newUserInfo
 
   return newUserInfo
