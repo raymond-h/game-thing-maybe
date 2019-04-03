@@ -26,6 +26,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as LT
 import qualified Web.Scotty as S
+import qualified Web.Scotty.Trans as ST
 
 import qualified Network.Pusher as P
 
@@ -155,8 +156,10 @@ createApp environment appState = do
       case mPusher of
         Nothing -> return ()
         Just pusher -> do
-          P.trigger pusher channels event eventData Nothing
-          return ()
+          res <- P.trigger pusher channels event eventData Nothing
+          case res of
+            Left err -> S.raise $ ST.stringError $ show err
+            Right () -> return ()
 
   S.scottyApp $ do
     unless isTest $
@@ -193,5 +196,5 @@ createApp environment appState = do
     S.put "/user-info" $ UI.updateUserInfo auth appState pushClient
 
     S.get "/invites" $ I.getInvites auth appState
-    S.post "/invites" $ I.createInvite auth appState
-    S.post "/invites/accept" $ I.acceptInvite auth appState
+    S.post "/invites" $ I.createInvite auth appState pushClient
+    S.post "/invites/accept" $ I.acceptInvite auth appState pushClient

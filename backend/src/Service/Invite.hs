@@ -18,10 +18,12 @@ import Network.HTTP.Types
 import Web.Scotty as S
 import qualified Data.Text as T
 
+import qualified Network.Pusher as P
+
 import AppState as AS
 import qualified Validation as V
 import AuthUtil (requireUsernameE)
-import Util (stateTVar, sendErrorAndFinish, guardError)
+import Util (stateTVar, sendErrorAndFinish, guardError, pusherizedUserId)
 
 data InviteBody =
   InviteBodyUserId UserId |
@@ -55,21 +57,21 @@ getInvitesLogic lookupInvites user = E.runExceptT $ do
 
   E.lift $ lookupInvites (user^.userId)
 
-createInvite :: ActionM User -> TVar AppState -> ActionM ()
-createInvite auth appStateTVar = do
+createInvite :: ActionM User -> TVar AppState -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
+createInvite auth appStateTVar pushClient = do
   user <- auth
   body <- S.jsonData
 
   let
-    lookupUser criteria = do
+    lookupUser criteria = liftIO . atomically $ do
       appState <- readTVar appStateTVar
       case criteria of
         ById userId' -> return $ appState ^. userById userId'
         ByUsername uname -> return $ appState ^. userByUsername uname
 
-    addInvite inv = stateTVar appStateTVar $ AS.addInvite inv
+    addInvite inv = liftIO . atomically $ stateTVar appStateTVar $ AS.addInvite inv
 
-  result <- liftIO . atomically $ createInviteLogic lookupUser addInvite user body
+  result <- createInviteLogic lookupUser addInvite pushClient user body
 
   case result of
     Left (status, msg) -> sendErrorAndFinish status msg
@@ -80,10 +82,11 @@ data LookupCriteria = ById UserId | ByUsername T.Text
 createInviteLogic :: Monad m =>
   (LookupCriteria -> m (Maybe User)) ->
   (Invite -> m AS.Id) ->
+  ([P.Channel] -> P.Event -> P.EventData -> m ()) ->
   User ->
   InviteBody ->
   m (Either (Status, T.Text) Invite)
-createInviteLogic lookupUser addInvite user body = E.runExceptT $ do
+createInviteLogic lookupUser addInvite pushClient user body = E.runExceptT $ do
   E.liftEither $ requireUsernameE user
 
   let
@@ -107,30 +110,38 @@ createInviteLogic lookupUser addInvite user body = E.runExceptT $ do
 
       invId <- E.lift $ addInvite invite
 
+      E.lift $ pushClient [
+          P.Channel P.Private (pusherizedUserId userId' <> "-invites"),
+          P.Channel P.Private (pusherizedUserId otherUserId <> "-invites")
+        ] "update-invites" ""
+
       return $ invite & AS.inviteId .~ Just invId
 
 data AcceptInviteBody = AcceptInviteBody {
   acceptInviteBodyInviteId :: AS.Id
-} deriving (Eq, Show, Generic)
+} deriving (Eq, Show)
 
 instance FromJSON AcceptInviteBody where
+  parseJSON = withObject "AcceptInviteBody" $ \v ->
+    AcceptInviteBody
+      <$> v .: "id"
 
-acceptInvite :: ActionM User -> TVar AppState -> ActionM ()
-acceptInvite auth appStateTVar = do
+acceptInvite :: ActionM User -> TVar AppState -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
+acceptInvite auth appStateTVar pushClient = do
   user <- auth
   body <- S.jsonData
 
   let
-    lookupInvite :: AS.Id -> STM (Maybe AS.Invite)
-    lookupInvite invId = view (invites . at invId) <$> readTVar appStateTVar
+    lookupInvite :: AS.Id -> S.ActionM (Maybe AS.Invite)
+    lookupInvite invId = view (invites . at invId) <$> (liftIO . readTVarIO) appStateTVar
 
-    removeInvite :: AS.Id -> STM ()
-    removeInvite invId = modifyTVar' appStateTVar $ AS.deleteInvite invId
+    removeInvite :: AS.Id -> S.ActionM ()
+    removeInvite invId = liftIO $ atomically $ modifyTVar' appStateTVar $ AS.deleteInvite invId
 
-    addGame :: AS.UserId -> AS.UserId -> STM AS.GameAppState
-    addGame uid otherUid = stateTVar appStateTVar $ AS.createGame uid otherUid
+    addGame :: AS.UserId -> AS.UserId -> S.ActionM AS.GameAppState
+    addGame uid otherUid = liftIO $ atomically $ stateTVar appStateTVar $ AS.createGame uid otherUid
 
-  result <- liftIO . atomically $ acceptInviteLogic lookupInvite removeInvite addGame user body
+  result <- acceptInviteLogic lookupInvite removeInvite addGame pushClient user body
 
   case result of
     Left (status, errMsg) -> do
@@ -142,10 +153,11 @@ acceptInviteLogic :: Monad m =>
   (AS.Id -> m (Maybe Invite)) ->
   (AS.Id -> m ()) ->
   (AS.UserId -> AS.UserId -> m GameAppState) ->
+  ([P.Channel] -> P.Event -> P.EventData -> m ()) ->
   User ->
   AcceptInviteBody ->
   m (Either (Status, T.Text) GameAppState)
-acceptInviteLogic lookupInvite removeInvite addGame user body = E.runExceptT $ do
+acceptInviteLogic lookupInvite removeInvite addGame pushClient user body = E.runExceptT $ do
   mInvite <- E.lift . lookupInvite $ acceptInviteBodyInviteId body
   inv <- E.liftEither $ V.noteE (status404, "No such invite") mInvite
 
@@ -153,5 +165,10 @@ acceptInviteLogic lookupInvite removeInvite addGame user body = E.runExceptT $ d
 
   E.lift $ removeInvite (inv^?!inviteId._Just)
   gas <- E.lift $ addGame (inv^.player1) (inv^.player2)
+
+  E.lift $ pushClient [
+      P.Channel P.Private (pusherizedUserId (inv^.player1) <> "-invites"),
+      P.Channel P.Private (pusherizedUserId (inv^.player2) <> "-invites")
+    ] "update-invites" ""
 
   return gas

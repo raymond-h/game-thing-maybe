@@ -13,12 +13,18 @@ function fetchJsonObs(url, opts = {}) {
     }
 
     return fetch(url, outOpts)
-      .then(res => {
-        if(!res.ok) {
-          throw new Error(`Fetch error: ${res.statusText}`);
-        }
+      .then(async res => {
+        const data = await res.json();
 
-        return res.json();
+        if(!res.ok) {
+          const err = new Error(`Fetch error: ${res.statusText}`);
+          err.response = res;
+          err.body = data;
+          throw err;
+        }
+        else {
+          return data;
+        }
       });
   });
 }
@@ -76,4 +82,38 @@ export function getUserInfoUpdates(channelPool, userId) {
     getUserInfo(),
     channelEventObs(channelPool, channelName, 'update-user-info')
   );
+}
+
+export function getInvites() {
+  return fetchJsonObs(apiUrl + '/invites');
+}
+
+export function getInvitesUpdates(channelPool) {
+  const userId = authService.userId;
+  const channelName = `private-${userId.replace(/\|/, ';')}-invites`;
+  return rxjs.merge(
+    getInvites(),
+    channelEventObs(channelPool, channelName, 'update-invites')
+      .pipe(flatMap(() => getInvites()))
+  );
+}
+
+export function sendInviteToUsername(otherUsername) {
+  return fetchJsonObs(apiUrl + '/invites', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8'
+    },
+    body: JSON.stringify({ username: otherUsername })
+  });
+}
+
+export function acceptInvite(inviteId) {
+  return fetchJsonObs(apiUrl + '/invites/accept', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8'
+    },
+    body: JSON.stringify({ id: inviteId })
+  });
 }

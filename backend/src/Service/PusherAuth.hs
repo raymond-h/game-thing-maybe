@@ -37,7 +37,10 @@ instance ToJSON PusherAuthResponse where
   toJSON res = object ["auth" .= (TE.decodeUtf8 $ paResAuthToken res)]
 
 allowedChannelsForUserId :: AS.UserId -> [P.Channel]
-allowedChannelsForUserId uid = [P.Channel P.Private (pusherizedUserId uid <> "-user-info")]
+allowedChannelsForUserId uid = [
+    P.Channel P.Private (pusherizedUserId uid <> "-user-info"),
+    P.Channel P.Private (pusherizedUserId uid <> "-invites")
+  ]
 
 pusherAuthenticateLogic :: P.Credentials -> AS.User -> P.SocketID -> P.Channel -> Maybe PusherAuthResponse
 pusherAuthenticateLogic creds user socketId channel = do
