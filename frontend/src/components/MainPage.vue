@@ -5,31 +5,27 @@
 </template>
 
 <script>
-import { pluck, filter, flatMap } from 'rxjs/operators';
+import * as rxjs from 'rxjs';
+import { switchMap } from 'rxjs/operators';
 
 import * as api from '../api';
 import authService from '../api/auth';
-import pusher from '../api/pusher';
+import { pusher, channelPool } from '../api/pusher';
 
 export default {
-  data() {
-    return {
-      userInfoChan: null
-    };
-  },
-
-  mounted() {
-    const userId = authService.userId;
-    this.userInfoChan = pusher.subscribe(`private-${userId.replace(/\|/, ';')}-user-info`);
-  },
-
   subscriptions() {
     return {
-      userInfo: this.$watchAsObservable('userInfoChan')
+      userInfo: authService.isAuthenticated$
         .pipe(
-          pluck('newValue'),
-          filter(v => v != null),
-          flatMap(api.getUserInfoUpdates)
+          switchMap(isAuthed => {
+            if(isAuthed) {
+              const userId = authService.userId;
+              const chanName = `private-${userId.replace(/\|/, ';')}-user-info`;
+              return api.getUserInfoUpdates(channelPool, chanName);
+            }
+
+            return rxjs.NEVER;
+          })
         )
     };
   }

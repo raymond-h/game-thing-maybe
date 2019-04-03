@@ -23,6 +23,23 @@ function fetchJsonObs(url, opts = {}) {
   });
 }
 
+function channelEventObs(channelPool, channelName, event) {
+  return new rxjs.Observable(observer => {
+    const handler = data => observer.next(data);
+
+    const chan = channelPool.get(channelName);
+    chan.bind(event, handler);
+    chan.bind('pusher:subscription_error', status => {
+      observer.error(new Error(`Error during subscription to channel '${channelName}': HTTP status code ${status}`));
+    });
+
+    return () => {
+      chan.unbind(event, handler);
+      channelPool.release(channelName);
+    };
+  });
+}
+
 const apiUrl = process.env.API_URL.replace(/{hostname}/g, location.hostname);
 
 export function someJson() {
@@ -53,13 +70,10 @@ export function updateUserInfo(newUserInfo) {
   });
 }
 
-export function getUserInfoUpdates(userInfoChan) {
+export function getUserInfoUpdates(channelPool, userInfoChanName) {
   return rxjs.merge(
     getUserInfo(),
-    rxjs.fromEventPattern(
-      handler => userInfoChan.bind('update-user-info', handler),
-      handler => userInfoChan.unbind('update-user-info', handler)
-    )
+    channelEventObs(channelPool, userInfoChanName, 'update-user-info')
       .pipe(
         flatMap(() => getUserInfo())
       )
