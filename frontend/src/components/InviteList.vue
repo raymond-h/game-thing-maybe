@@ -1,12 +1,25 @@
 <template>
   <div>
     <h2>Invites</h2>
-    <input type="text" v-model="inviteField">
-    <button v-stream:click="{ subject: sendInvite$, data: inviteField }">Send invite</button>
+    <input
+      v-model="inviteField"
+      type="text"
+    >
+    <button v-stream:click="{ subject: sendInvite$, data: inviteField }">
+      Send invite
+    </button>
     <ul>
-      <li v-for="invite in invites" :key="invite.id">
+      <li
+        v-for="invite in invites"
+        :key="invite.id"
+      >
         {{ invite.id }}: {{ invite.player1 }} -> {{ invite.player2 }}
-        <button v-if="isMe(invite.player2)" v-stream:click="{ subject: acceptInvite$, data: invite }">Accept</button>
+        <button
+          v-if="isMe(invite.player2)"
+          v-stream:click="{ subject: acceptInvite$, data: invite }"
+        >
+          Accept
+        </button>
       </li>
     </ul>
     <p>{{ sendInviteResult }}</p>

@@ -11,7 +11,7 @@ import { switchMap } from 'rxjs/operators';
 
 import * as api from '../api';
 import authService from '../api/auth';
-import { pusher, channelPool } from '../api/pusher';
+import { channelPool } from '../api/pusher';
 
 import InviteList from './InviteList';
 
