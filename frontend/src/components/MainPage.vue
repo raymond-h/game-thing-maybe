@@ -17,15 +17,11 @@ export default {
     return {
       userInfo: authService.isAuthenticated$
         .pipe(
-          switchMap(isAuthed => {
-            if(isAuthed) {
-              const userId = authService.userId;
-              const chanName = `private-${userId.replace(/\|/, ';')}-user-info`;
-              return api.getUserInfoUpdates(channelPool, chanName);
-            }
-
-            return rxjs.NEVER;
-          })
+          switchMap(isAuthed =>
+            isAuthed ?
+              api.getUserInfoUpdates(channelPool, authService.userId) :
+              rxjs.NEVER
+          )
         )
     };
   }

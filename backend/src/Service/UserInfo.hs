@@ -7,6 +7,7 @@ module Service.UserInfo where
 
 import GHC.Generics
 import Data.Aeson
+import Data.Aeson.Text
 import Control.Lens hiding ((.=))
 import Data.Either.Validation (Validation)
 import qualified Control.Monad.Except as E
@@ -20,6 +21,7 @@ import Control.Monad.State.Strict
 import Network.HTTP.Types
 import Web.Scotty as S
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as LT
 import qualified Data.Map.Strict as M
 
 import qualified Network.Pusher as P
@@ -91,8 +93,10 @@ updateUserInfoLogic updateUser pushClient user body = E.runExceptT $ do
 
   E.lift $ updateUser newUser
 
+  let newUserInfo = UserInfoBody { userInfoUsername = newUser ^. username }
+
   when (newUser /= user) $ do
     let uid = pusherizedUserId (user^.userId)
-    E.lift $ pushClient [P.Channel P.Private (uid <> "-user-info")] "update-user-info" ""
+    E.lift $ pushClient [P.Channel P.Private (uid <> "-user-info")] "update-user-info" $ LT.toStrict $ encodeToLazyText newUserInfo
 
-  return $ UserInfoBody { userInfoUsername = newUser ^. username }
+  return newUserInfo

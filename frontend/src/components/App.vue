@@ -26,14 +26,22 @@
 <script>
 import authService from '../api/auth';
 import * as api from '../api';
+import { channelPool } from '../api/pusher';
 import * as rxjs from 'rxjs';
-import { flatMap } from 'rxjs/operators';
+import { flatMap, switchMap } from 'rxjs/operators';
 
 export default {
   subscriptions() {
     return {
       authenticated: authService.isAuthenticated$,
-      userInfo: authService.userInfo$,
+      userInfo: authService.isAuthenticated$
+        .pipe(
+          switchMap(isAuthed =>
+            isAuthed ?
+              api.getUserInfoUpdates(channelPool, authService.userId) :
+              rxjs.NEVER
+          )
+        ),
       someJson: authService.isAuthenticated$
         .pipe(
           flatMap(isAuth => isAuth ? api.someJson() : rxjs.of())
@@ -45,7 +53,7 @@ export default {
     title() {
       if(this.userInfo == null) return 'hello world';
 
-      return `hello ${this.userInfo.displayName}!!`;
+      return `hello ${this.userInfo.username}!!`;
     }
   },
 

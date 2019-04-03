@@ -70,12 +70,10 @@ export function updateUserInfo(newUserInfo) {
   });
 }
 
-export function getUserInfoUpdates(channelPool, userInfoChanName) {
+export function getUserInfoUpdates(channelPool, userId) {
+  const channelName = `private-${userId.replace(/\|/, ';')}-user-info`;
   return rxjs.merge(
     getUserInfo(),
-    channelEventObs(channelPool, userInfoChanName, 'update-user-info')
-      .pipe(
-        flatMap(() => getUserInfo())
-      )
+    channelEventObs(channelPool, channelName, 'update-user-info')
   );
 }
