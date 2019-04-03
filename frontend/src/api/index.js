@@ -12,7 +12,14 @@ function fetchJsonObs(url, opts = {}) {
       outOpts.headers['Authorization'] = `Bearer ${authService.accessToken}`;
     }
 
-    return fetch(url, outOpts).then(res => res.json());
+    return fetch(url, outOpts)
+      .then(res => {
+        if(!res.ok) {
+          throw new Error(`Fetch error: ${res.statusText}`);
+        }
+
+        return res.json();
+      });
   });
 }
 

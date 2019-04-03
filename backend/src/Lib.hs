@@ -29,7 +29,7 @@ import qualified Web.Scotty as S
 
 import qualified Network.Pusher as P
 
-import Auth
+import qualified Auth as A
 import Validation as V
 import Util (queryTVar, modifyTVarState)
 import qualified AppState as AS
@@ -59,8 +59,9 @@ devCorsResourcePolicy = simpleCorsResourcePolicy {
   corsRequestHeaders = ["Authorization", "Content-Type"]
 }
 
+authenticate :: TVar AS.AppState -> JWTValidationSettings -> JWKSet -> S.ActionM AS.User
 authenticate appState jwtValidationSettings jwkSet = do
-  (_, claimsSet) <- verifyJWT jwtValidationSettings jwkSet
+  (_, claimsSet) <- A.verifyJWT jwtValidationSettings jwkSet
 
   let userId = T.pack $ view (claimSub._Just.string) claimsSet
 
@@ -130,7 +131,7 @@ createApp environment appState = do
       mDomain <- lookupEnv "AUTH0_DOMAIN"
       case mDomain of
         Nothing -> return Nothing
-        Just domain -> Just <$> fetchJWKSet domain
+        Just domain -> Just <$> A.fetchJWKSet domain
 
   -- domain <- T.pack <$> getEnv "AUTH0_DOMAIN"
   -- clientId <- T.pack <$> getEnv "AUTH0_CLIENT_ID"

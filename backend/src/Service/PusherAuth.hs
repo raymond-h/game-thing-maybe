@@ -10,6 +10,7 @@ import Control.Lens hiding ((.=))
 import Control.Monad (guard)
 import Control.Monad.Trans (liftIO)
 -- import qualified Data.Set as Set
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Network.Pusher as P
 import qualified Web.Scotty as S
@@ -58,6 +59,6 @@ pusherAuthenticate auth creds = do
   case pusherAuthenticateLogic creds user socketId channel of
     Nothing -> do
       S.status forbidden403
-      S.text "Forbidden"
+      S.json $ object ["error" .= ("Forbidden" :: T.Text)]
 
     Just result -> S.json result
