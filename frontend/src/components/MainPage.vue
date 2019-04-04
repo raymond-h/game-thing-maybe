@@ -1,7 +1,7 @@
 <template>
   <div>
     <p>This is the main page!! {{ userInfo }}</p>
-    <my-invite-list />
+    <InviteList />
   </div>
 </template>
 
@@ -17,7 +17,7 @@ import InviteList from './InviteList';
 
 export default {
   components: {
-    'my-invite-list': InviteList
+    InviteList
   },
 
   subscriptions() {
