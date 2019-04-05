@@ -3,6 +3,9 @@
 
 module Lib where
 
+import Control.Monad (void)
+import Configuration.Dotenv
+import Configuration.Dotenv.Types
 import GHC.Generics
 import Data.Aeson
 import Data.Aeson.Lens
@@ -102,6 +105,9 @@ data Environment = Production | Development | Test deriving (Eq, Show)
 
 runApp :: IO ()
 runApp = do
+  -- we don't care if the file is missing
+  (void $ loadFile defaultConfig) `onMissingFile` return ()
+
   isDev <- fromMaybe False <$> getEnv' "DEV"
   appState <- newTVarIO AS.initialAppState
   app <- createApp (if isDev then Development else Production) appState
