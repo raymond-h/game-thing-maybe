@@ -20,6 +20,11 @@ import qualified Data.Text as T
 
 import qualified Network.Pusher as P
 
+import Database.Persist as Ps
+import Database.Persist.Sqlite as Ps
+import Data.Pool
+import qualified Database as DB
+
 import AppState as AS
 import qualified Validation as V
 import AuthUtil (requireUsernameE)
@@ -37,8 +42,8 @@ instance FromJSON InviteBody where
       InviteBodyUsername <$> v .: "username"
     ]
 
-getInvites :: ActionM User -> TVar AppState -> ActionM ()
-getInvites auth appStateTVar = do
+getInvites :: ActionM User -> TVar AppState -> Pool SqlBackend -> ActionM ()
+getInvites auth appStateTVar dbPool = do
   user <- auth
 
   let lookupInvites uid = AS.findInvitesForUser uid <$> readTVarIO appStateTVar
@@ -58,17 +63,19 @@ getInvitesLogic lookupInvites user = E.runExceptT $ do
 
   E.lift $ lookupInvites (user^.userId)
 
-createInvite :: ActionM User -> TVar AppState -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
-createInvite auth appStateTVar pushClient = do
+createInvite :: ActionM User -> TVar AppState -> Pool SqlBackend -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
+createInvite auth appStateTVar dbPool pushClient = do
   user <- auth
   body <- S.jsonData
 
   let
-    lookupUser criteria = liftIO . atomically $ do
-      appState <- readTVar appStateTVar
-      case criteria of
-        ById userId' -> return $ appState ^. userById userId'
-        ByUsername uname -> return $ appState ^. userByUsername uname
+    lookupUser (ById userId') = do
+      mDbUser <- DB.runDbPool dbPool $ Ps.getEntity (DB.UserKey userId')
+      return $ (DB.fromDbUser <$> mDbUser)
+
+    lookupUser (ByUsername uname) = do
+      mDbUser <- DB.runDbPool dbPool $ Ps.selectFirst [DB.UserUsername ==. Just uname] []
+      return $ (DB.fromDbUser <$> mDbUser)
 
     addInvite inv = liftIO . atomically $ stateTVar appStateTVar $ AS.addInvite inv
 
@@ -124,8 +131,8 @@ instance FromJSON AcceptInviteBody where
     AcceptInviteBody
       <$> v .: "id"
 
-acceptInvite :: ActionM User -> TVar AppState -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
-acceptInvite auth appStateTVar pushClient = do
+acceptInvite :: ActionM User -> TVar AppState -> Pool SqlBackend -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
+acceptInvite auth appStateTVar dbPool pushClient = do
   user <- auth
   body <- S.jsonData
 

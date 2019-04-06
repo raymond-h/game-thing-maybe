@@ -47,6 +47,11 @@ dependencies:
 - hspec-wai-json
 - QuickCheck
 - pusher-http-haskell
+- persistent
+- persistent-template
+- persistent-sqlite
+- monad-logger
+- resource-pool
 
 library:
   source-dirs: src

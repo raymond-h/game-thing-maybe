@@ -30,6 +30,11 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as LT
 import qualified Web.Scotty as S
 import qualified Web.Scotty.Trans as ST
+import Database.Persist as P
+import Database.Persist.Sqlite
+import Control.Monad.Logger
+import Data.Pool
+import Control.Exception (assert)
 
 import qualified Network.Pusher as P
 
@@ -38,6 +43,7 @@ import Validation as V
 import Util (queryTVar, modifyTVarState)
 import qualified AppState as AS
 import qualified Auth0Management as A0M
+import qualified Database as DB
 
 import qualified Service.UserInfo as UI
 import qualified Service.Invite as I
@@ -63,15 +69,25 @@ devCorsResourcePolicy = simpleCorsResourcePolicy {
   corsRequestHeaders = ["Authorization", "Content-Type"]
 }
 
-authenticate :: TVar AS.AppState -> JWTValidationSettings -> JWKSet -> S.ActionM AS.User
-authenticate appState jwtValidationSettings jwkSet = do
+authenticate :: TVar AS.AppState -> Pool SqlBackend -> JWTValidationSettings -> JWKSet -> S.ActionM AS.User
+authenticate appState dbPool jwtValidationSettings jwkSet = do
   (_, claimsSet) <- A.verifyJWT jwtValidationSettings jwkSet
 
   let userId = T.pack $ view (claimSub._Just.string) claimsSet
 
-  user <- modifyTVarState appState $ AS.ensureUser userId
+  dbUser <- DB.runDbPool dbPool $ do
+    let userKey = DB.UserKey userId
 
-  return (user :: AS.User)
+    mUser <- P.getEntity userKey
+    case mUser of
+      Nothing -> do
+        let userData = DB.User Nothing
+        P.insertKey userKey $ userData
+        return $ Entity userKey userData
+
+      Just user -> return user
+
+  return (DB.fromDbUser dbUser :: AS.User)
 
 testAuthenticate isTest appStateTVar = do
   guard isTest
@@ -110,11 +126,14 @@ runApp = do
 
   isDev <- fromMaybe False <$> getEnv' "DEV"
   appState <- newTVarIO AS.initialAppState
-  app <- createApp (if isDev then Development else Production) appState
-  runEnv 8080 app
 
-createApp :: Environment -> TVar AS.AppState -> IO Application
-createApp environment appState = do
+  runNoLoggingT $ withSqlitePool "local.db" 4 $ \dbPool -> liftIO $ do
+    DB.runDbPool dbPool $ runMigration DB.migrateAll
+    app <- createApp (if isDev then Development else Production) appState dbPool
+    runEnv 8080 app
+
+createApp :: Environment -> TVar AS.AppState -> Pool SqlBackend -> IO Application
+createApp environment appState dbPool = do
   let isDev = environment == Development
   let isTest = environment == Test
   unless isTest $ print ("Dev?", isDev)
@@ -155,7 +174,7 @@ createApp environment appState = do
     auth :: S.ActionM AS.User
     auth = case mJwkSetOrError of
       Nothing -> testAuthenticate isTest appState
-      Just (Right jwkSet) -> authenticate appState jwtValidationSettings jwkSet
+      Just (Right jwkSet) -> authenticate appState dbPool jwtValidationSettings jwkSet
 
     pushClient :: [P.Channel] -> P.Event -> P.EventData -> S.ActionM ()
     pushClient channels event eventData = do
@@ -185,6 +204,9 @@ createApp environment appState = do
 
     when isDev $
       S.get "/.app-state" $ auth >> do
+        res <- DB.runDbPool dbPool $ P.selectList [] []
+        liftIO $ print (res :: [P.Entity DB.User])
+
         as <- liftIO . readTVarIO $ appState
         S.text . LT.pack $ show as
 
@@ -199,8 +221,8 @@ createApp environment appState = do
       S.json userId
 
     S.get "/user-info" $ UI.getUserInfo auth
-    S.put "/user-info" $ UI.updateUserInfo auth appState pushClient
+    S.put "/user-info" $ UI.updateUserInfo auth dbPool pushClient
 
-    S.get "/invites" $ I.getInvites auth appState
-    S.post "/invites" $ I.createInvite auth appState pushClient
-    S.post "/invites/accept" $ I.acceptInvite auth appState pushClient
+    S.get "/invites" $ I.getInvites auth appState dbPool
+    S.post "/invites" $ I.createInvite auth appState dbPool pushClient
+    S.post "/invites/accept" $ I.acceptInvite auth appState dbPool pushClient

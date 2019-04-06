@@ -24,6 +24,11 @@ import qualified Data.Text as T
 import qualified Data.Map.Strict as M
 import qualified Network.Pusher as P
 
+-- import Database.Persist
+import Database.Persist.Sqlite (createSqlitePool)
+import Control.Monad.Logger (runNoLoggingT)
+import Data.Pool (Pool)
+
 import Lib (createApp, Environment(..))
 import AppState as AS
 import qualified Game as G
@@ -402,8 +407,9 @@ main = hspec $ do
         PA.pusherAuthenticateLogic creds user "123.456" (P.Channel P.Public "some-whatever-channel") `shouldBe` Nothing
 
   appStateTVar <- runIO $ newTVarIO testAppState
+  dbPool <- runIO $ runNoLoggingT $ createSqlitePool ":memory:" 1
 
-  describe "REST app" $ beforeAll_ setupEnv $ before_ (resetAppState appStateTVar) $ with (createApp Test appStateTVar) $ do
+  describe "REST app" $ beforeAll_ setupEnv $ before_ (resetAppState appStateTVar) $ with (createApp Test appStateTVar dbPool) $ do
     describe "/" $ do
       it "should work OK" $ do
         get "/" `shouldRespondWith` "hello"

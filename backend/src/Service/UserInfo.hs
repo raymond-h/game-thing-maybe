@@ -16,7 +16,6 @@ import Data.Functor (($>))
 import Data.Bifunctor (first)
 import Control.Monad (forM_)
 import Control.Monad.Trans (liftIO)
-import Control.Concurrent.STM hiding (check)
 import Control.Monad.State.Strict
 import Network.HTTP.Types
 import Web.Scotty as S
@@ -26,9 +25,14 @@ import qualified Data.Map.Strict as M
 
 import qualified Network.Pusher as P
 
+import Database.Persist as Ps
+import Database.Persist.Sqlite as Ps
+import Data.Pool
+import qualified Database as DB
+
 import AppState as AS
 import Validation as V
-import Util (Updater, stateTVar, pusherizedUserId)
+import Util (Updater, pusherizedUserId)
 import PusherCommon
 
 newtype UserInfoBody = UserInfoBody {
@@ -64,11 +68,16 @@ getUserInfo auth = S.json . getUserInfoLogic =<< auth
 getUserInfoLogic :: User -> UserInfoBody
 getUserInfoLogic user = UserInfoBody { userInfoUsername = user ^. username }
 
-updateUserInfo :: ActionM User -> TVar AppState -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
-updateUserInfo auth appStateTVar pushClient = do
+updateUserInfo :: ActionM User -> Pool SqlBackend -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
+updateUserInfo auth dbPool pushClient = do
   user <- auth
   body <- S.jsonData
-  let updateUser user = liftIO $ atomically $ modifyTVar' appStateTVar $ AS.updateUser user
+  let
+    updateUser user =
+      let
+        dbUser = DB.toDbUser user
+      in
+        DB.runDbPool dbPool $ Ps.replace (Ps.entityKey dbUser) (Ps.entityVal dbUser)
 
   result <- updateUserInfoLogic updateUser (pushClient . fmap toChannel) user body
 
