@@ -32,7 +32,7 @@ import qualified Database as DB
 
 import AppState as AS
 import Validation as V
-import Util (Updater, pusherizedUserId)
+import Util (Updater, pusherizedUserId, sendErrorAndFinish)
 import PusherCommon
 
 newtype UserInfoBody = UserInfoBody {
@@ -67,6 +67,24 @@ getUserInfo auth = S.json . getUserInfoLogic =<< auth
 
 getUserInfoLogic :: User -> UserInfoBody
 getUserInfoLogic user = UserInfoBody { userInfoUsername = user ^. userUsername }
+
+getSpecificUserInfo :: Pool SqlBackend -> ActionM ()
+getSpecificUserInfo dbPool = do
+  uid <- S.param "userId"
+
+  let
+    lookupUser :: AS.UserId -> S.ActionM (Maybe AS.User)
+    lookupUser uid = (fmap . fmap) DB.fromDbUser $ DB.runDbPool dbPool $ Ps.getEntity (DB.UserKey uid)
+
+  result <- getSpecificUserInfoLogic <$> lookupUser uid
+
+  case result of
+    Left (status, err) -> sendErrorAndFinish status err
+    Right r -> S.json r
+
+getSpecificUserInfoLogic :: Maybe AS.User -> Either (Status, T.Text) UserInfoBody
+getSpecificUserInfoLogic Nothing = Left (status404, "No such user")
+getSpecificUserInfoLogic (Just user) = Right $ getUserInfoLogic user
 
 updateUserInfo :: ActionM User -> Pool SqlBackend -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
 updateUserInfo auth dbPool pushClient = do

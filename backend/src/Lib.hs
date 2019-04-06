@@ -232,6 +232,7 @@ createApp environment dbPool = do
       S.json userId
 
     S.get "/user-info" $ UI.getUserInfo auth
+    S.get "/user-info/:userId" $ UI.getSpecificUserInfo dbPool
     S.put "/user-info" $ UI.updateUserInfo auth dbPool pushClient
 
     S.get "/invites" $ I.getInvites auth dbPool

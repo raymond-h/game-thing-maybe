@@ -306,6 +306,17 @@ main = hspec $ do
         endAppState^.pushCount `shouldBe` 0
         result `shouldBe` (Right $ UI.UserInfoBody (Just "Something"))
 
+      prop "allows getting user info of other users" $ \mUname -> do
+        let
+          user1 = User { _userId = "hello", _userUsername = mUname }
+
+          result = UI.getSpecificUserInfoLogic (Just user1)
+
+        result `shouldBe` (Right $ UI.UserInfoBody mUname)
+
+      it "gives appropriate error when user does not exist" $ do
+        UI.getSpecificUserInfoLogic Nothing `shouldBe` Left (status404, "No such user")
+
     describe "invite service" $ do
       let
         lookupUser :: I.LookupCriteria -> S.State AS.AppState (Maybe AS.User)
