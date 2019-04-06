@@ -69,8 +69,8 @@ devCorsResourcePolicy = simpleCorsResourcePolicy {
   corsRequestHeaders = ["Authorization", "Content-Type"]
 }
 
-authenticate :: TVar AS.AppState -> Pool SqlBackend -> JWTValidationSettings -> JWKSet -> S.ActionM AS.User
-authenticate appState dbPool jwtValidationSettings jwkSet = do
+authenticate :: Pool SqlBackend -> JWTValidationSettings -> JWKSet -> S.ActionM AS.User
+authenticate dbPool jwtValidationSettings jwkSet = do
   (_, claimsSet) <- A.verifyJWT jwtValidationSettings jwkSet
 
   let userId = T.pack $ view (claimSub._Just.string) claimsSet
@@ -174,7 +174,7 @@ createApp environment appState dbPool = do
     auth :: S.ActionM AS.User
     auth = case mJwkSetOrError of
       Nothing -> testAuthenticate isTest appState
-      Just (Right jwkSet) -> authenticate appState dbPool jwtValidationSettings jwkSet
+      Just (Right jwkSet) -> authenticate dbPool jwtValidationSettings jwkSet
 
     pushClient :: [P.Channel] -> P.Event -> P.EventData -> S.ActionM ()
     pushClient channels event eventData = do
@@ -207,6 +207,9 @@ createApp environment appState dbPool = do
         res <- DB.runDbPool dbPool $ P.selectList [] []
         liftIO $ print (res :: [P.Entity DB.User])
 
+        res <- DB.runDbPool dbPool $ P.selectList [] []
+        liftIO $ print (res :: [P.Entity DB.Invite])
+
         as <- liftIO . readTVarIO $ appState
         S.text . LT.pack $ show as
 
@@ -223,6 +226,6 @@ createApp environment appState dbPool = do
     S.get "/user-info" $ UI.getUserInfo auth
     S.put "/user-info" $ UI.updateUserInfo auth dbPool pushClient
 
-    S.get "/invites" $ I.getInvites auth appState dbPool
-    S.post "/invites" $ I.createInvite auth appState dbPool pushClient
+    S.get "/invites" $ I.getInvites auth dbPool
+    S.post "/invites" $ I.createInvite auth dbPool pushClient
     S.post "/invites/accept" $ I.acceptInvite auth appState dbPool pushClient

@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 import Data.Maybe (isJust, fromJust)
 import Data.Either (isLeft)
@@ -24,10 +25,12 @@ import qualified Data.Text as T
 import qualified Data.Map.Strict as M
 import qualified Network.Pusher as P
 
--- import Database.Persist
+import qualified Database.Persist as Ps
+import qualified Database.Persist.Sql as Ps
 import Database.Persist.Sqlite (createSqlitePool)
 import Control.Monad.Logger (runNoLoggingT)
 import Data.Pool (Pool)
+import qualified Database as DB
 
 import Lib (createApp, Environment(..))
 import AppState as AS
@@ -37,6 +40,24 @@ import qualified Service.UserInfo as UI
 import qualified Service.Invite as I
 import qualified Service.PusherAuth as PA
 import Util (adjustMatching)
+
+instance Arbitrary AS.User where
+  arbitrary = AS.User <$> arbitrary <*> arbitrary
+
+instance Arbitrary (Ps.Entity DB.User) where
+  arbitrary = Ps.Entity <$> (DB.UserKey <$> arbitrary) <*> arbitrary
+
+instance Arbitrary DB.User where
+  arbitrary = DB.User <$> arbitrary
+
+instance Arbitrary AS.Invite where
+  arbitrary = AS.Invite <$> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary (Ps.Entity DB.Invite) where
+  arbitrary = Ps.Entity <$> (Ps.toSqlKey <$> arbitrary) <*> arbitrary
+
+instance Arbitrary DB.Invite where
+  arbitrary = DB.Invite <$> (DB.UserKey <$> arbitrary) <*> (DB.UserKey <$> arbitrary)
 
 testAppState :: AppState
 testAppState = initialAppState {
@@ -64,6 +85,19 @@ resetAppState appStateTVar = atomically $ writeTVar appStateTVar testAppState
 
 main :: IO ()
 main = hspec $ do
+  describe "Database <-> AppState" $ do
+    prop "User isomorphism" $ \user ->
+      (DB.fromDbUser $ DB.toDbUser $ user) `shouldBe` user
+
+    prop "User isomorphism 2" $ \user ->
+      (DB.toDbUser $ DB.fromDbUser $ user) `shouldBe` user
+
+    prop "Invite entity isomorphism (assuming ID is present)" $ \invite -> isJust (AS._inviteId invite) ==>
+      (DB.fromDbInviteEntity $ DB.toDbInviteEntity $ invite) `shouldBe` invite
+
+    prop "Invite entity isomorphism 2" $ \invite ->
+      (DB.toDbInviteEntity $ DB.fromDbInviteEntity $ invite) `shouldBe` invite
+
   describe "AppState" $ do
     describe "nextId" $ do
       prop "should always return a value greater than all input values" $

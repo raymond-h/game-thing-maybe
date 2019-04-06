@@ -42,11 +42,15 @@ instance FromJSON InviteBody where
       InviteBodyUsername <$> v .: "username"
     ]
 
-getInvites :: ActionM User -> TVar AppState -> Pool SqlBackend -> ActionM ()
-getInvites auth appStateTVar dbPool = do
+getInvites :: ActionM User -> Pool SqlBackend -> ActionM ()
+getInvites auth dbPool = do
   user <- auth
 
-  let lookupInvites uid = AS.findInvitesForUser uid <$> readTVarIO appStateTVar
+  let
+    lookupInvites uid = do
+      let userKey = DB.UserKey uid
+      dbInvs <- DB.runDbPool dbPool $ Ps.selectList ([DB.InvitePlayer1 ==. userKey] ||. [DB.InvitePlayer2 ==. userKey]) []
+      return $ map DB.fromDbInviteEntity dbInvs
 
   result <- liftIO $ getInvitesLogic lookupInvites user
 
@@ -63,8 +67,8 @@ getInvitesLogic lookupInvites user = E.runExceptT $ do
 
   E.lift $ lookupInvites (user^.userId)
 
-createInvite :: ActionM User -> TVar AppState -> Pool SqlBackend -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
-createInvite auth appStateTVar dbPool pushClient = do
+createInvite :: ActionM User -> Pool SqlBackend -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
+createInvite auth dbPool pushClient = do
   user <- auth
   body <- S.jsonData
 
@@ -77,7 +81,9 @@ createInvite auth appStateTVar dbPool pushClient = do
       mDbUser <- DB.runDbPool dbPool $ Ps.selectFirst [DB.UserUsername ==. Just uname] []
       return $ (DB.fromDbUser <$> mDbUser)
 
-    addInvite inv = liftIO . atomically $ stateTVar appStateTVar $ AS.addInvite inv
+    addInvite inv = do
+      invKey <- DB.runDbPool dbPool $ Ps.insert (DB.toDbInvite inv)
+      return $ fromIntegral $ Ps.fromSqlKey invKey
 
   result <- createInviteLogic lookupUser addInvite (pushClient . fmap toChannel) user body
 
@@ -138,10 +144,15 @@ acceptInvite auth appStateTVar dbPool pushClient = do
 
   let
     lookupInvite :: AS.Id -> S.ActionM (Maybe AS.Invite)
-    lookupInvite invId = view (invites . at invId) <$> (liftIO . readTVarIO) appStateTVar
+    lookupInvite invId = do
+      mDbInvite <- DB.runDbPool dbPool $ Ps.getEntity (Ps.toSqlKey . fromIntegral $ invId)
+      return $ DB.fromDbInviteEntity <$> mDbInvite
 
     removeInvite :: AS.Id -> S.ActionM ()
-    removeInvite invId = liftIO $ atomically $ modifyTVar' appStateTVar $ AS.deleteInvite invId
+    removeInvite invId = DB.runDbPool dbPool $ Ps.delete invKey
+      where
+        invKey :: Ps.Key DB.Invite
+        invKey = Ps.toSqlKey $ fromIntegral $ invId
 
     addGame :: AS.UserId -> AS.UserId -> S.ActionM AS.GameAppState
     addGame uid otherUid = liftIO $ atomically $ stateTVar appStateTVar $ AS.createGame uid otherUid

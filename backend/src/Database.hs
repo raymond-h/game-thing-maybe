@@ -13,6 +13,7 @@
 
 module Database where
 
+import Data.Maybe (fromJust)
 import Data.Pool
 import Database.Persist
 import Database.Persist.Sqlite
@@ -51,3 +52,25 @@ fromDbUser eUser = AS.User { AS._userId = (unUserKey $ entityKey eUser), AS._use
 
 toDbUser :: AS.User -> Entity User
 toDbUser asUser = Entity (UserKey $ AS._userId asUser) $ User { userUsername = AS._username asUser }
+
+fromDbInviteEntity :: Entity Invite -> AS.Invite
+fromDbInviteEntity eInvite = (fromDbInvite $ entityVal eInvite) {
+    AS._inviteId = (Just $ fromIntegral $ fromSqlKey $ entityKey eInvite)
+  }
+
+toDbInviteEntity :: AS.Invite -> Entity Invite
+toDbInviteEntity asInvite = Entity (toSqlKey $ fromIntegral $ fromJust $ AS._inviteId asInvite) $ toDbInvite asInvite
+
+fromDbInvite :: Invite -> AS.Invite
+fromDbInvite eInvite = AS.Invite {
+    AS._inviteId = Nothing,
+    AS._player1 = (unUserKey $ invitePlayer1 $ eInvite),
+    AS._player2 = (unUserKey $ invitePlayer2 $ eInvite)
+  }
+
+toDbInvite :: AS.Invite -> Invite
+toDbInvite asInvite =
+  Invite {
+    invitePlayer1 = UserKey $ AS._player1 asInvite,
+    invitePlayer2 = UserKey $ AS._player2 asInvite
+  }
