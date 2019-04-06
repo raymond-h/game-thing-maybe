@@ -1,0 +1,15 @@
+version: '3.2'
+
+services:
+  awm-dev-postgres:
+    image: postgres
+    restart: always
+    # environment:
+    #   EULA: 'true'
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - 'pg-data:/var/lib/postgresql/data'
+
+volumes:
+  pg-data:
