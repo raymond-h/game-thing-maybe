@@ -27,6 +27,7 @@ import qualified Database as DB
 
 import AppState as AS
 import qualified Validation as V
+import qualified Game as G
 import AuthUtil (requireUsernameE)
 import Util (stateTVar, sendErrorAndFinish, guardError, pusherizedUserId)
 import PusherCommon
@@ -137,8 +138,8 @@ instance FromJSON AcceptInviteBody where
     AcceptInviteBody
       <$> v .: "id"
 
-acceptInvite :: ActionM User -> TVar AppState -> Pool SqlBackend -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
-acceptInvite auth appStateTVar dbPool pushClient = do
+acceptInvite :: ActionM User -> Pool SqlBackend -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
+acceptInvite auth dbPool pushClient = do
   user <- auth
   body <- S.jsonData
 
@@ -155,7 +156,12 @@ acceptInvite auth appStateTVar dbPool pushClient = do
         invKey = Ps.toSqlKey $ fromIntegral $ invId
 
     addGame :: AS.UserId -> AS.UserId -> S.ActionM AS.GameAppState
-    addGame uid otherUid = liftIO $ atomically $ stateTVar appStateTVar $ AS.createGame uid otherUid
+    addGame uid otherUid = do
+      let
+        userKey = DB.UserKey uid
+        otherUserKey = DB.UserKey otherUid
+      dbGasEntity <- DB.runDbPool dbPool $ Ps.insertEntity (DB.GameAppState userKey otherUserKey G.initialState)
+      return $ DB.fromDbGameAppState dbGasEntity
 
   result <- acceptInviteLogic lookupInvite removeInvite addGame (pushClient . fmap toChannel) user body
 

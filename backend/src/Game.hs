@@ -10,6 +10,9 @@ import GHC.Generics
 import Control.Lens hiding ((.=))
 import Data.Aeson
 
+import Database.Persist
+import Database.Persist.Sql
+
 data State = State {
   _playerStates :: (PlayerState, PlayerState),
   _currentPlayer :: Player,
@@ -47,9 +50,21 @@ instance ToJSON State where
       "lastRoll" .= (state ^. lastRoll)
     ]
 
+instance FromJSON State where
+  parseJSON = withObject "State" $ \v -> State
+    <$> v .: "playerStates"
+    <*> v .: "currentPlayer"
+    <*> v .: "lastRoll"
+
 instance ToJSON Player where
   toJSON Player1 = "player1"
   toJSON Player2 = "player2"
+
+instance FromJSON Player where
+  parseJSON = withText "Player" $ \v ->
+    case v of
+      "player1" -> return Player1
+      "player2" -> return Player2
 
 instance ToJSON PlayerState where
   toJSON playerState = object [
@@ -58,8 +73,18 @@ instance ToJSON PlayerState where
       "fieldedPieces" .= (playerState ^. fieldedPieces)
     ]
 
+instance FromJSON PlayerState where
+  parseJSON = withObject "PlayerState" $ \v -> PlayerState
+    <$> v .: "wonPieces"
+    <*> v .: "outOfPlayPieces"
+    <*> v .: "fieldedPieces"
+
 instance ToJSON Piece where
   toJSON piece = object [ "position" .= (piece ^. position) ]
+
+instance FromJSON Piece where
+  parseJSON = withObject "Piece" $ \v -> Piece
+    <$> v .: "position"
 
 currentPlayerState :: Lens' State PlayerState
 currentPlayerState = lens getter setter
@@ -77,3 +102,10 @@ opponentOf Player1 = Player2
 opponentOf Player2 = Player1
 
 next = opponentOf
+
+instance PersistFieldSql State where
+  sqlType _ = SqlString
+
+instance PersistField State where
+  toPersistValue = toPersistValueJSON
+  fromPersistValue = fromPersistValueJSON

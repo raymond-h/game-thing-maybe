@@ -14,7 +14,7 @@ import Test.Hspec.QuickCheck (prop)
 import Test.Hspec.Wai
 import Test.Hspec.Wai.JSON
 import qualified Test.Hspec.Wai.QuickCheck as WQC
-import Test.QuickCheck
+import Test.QuickCheck as Q
 import Test.QuickCheck.Poly
 import Data.Monoid
 import Data.Foldable
@@ -59,6 +59,27 @@ instance Arbitrary (Ps.Entity DB.Invite) where
 instance Arbitrary DB.Invite where
   arbitrary = DB.Invite <$> (DB.UserKey <$> arbitrary) <*> (DB.UserKey <$> arbitrary)
 
+instance Arbitrary AS.GameAppState where
+  arbitrary = AS.GameAppState <$> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary G.State where
+  arbitrary = G.State <$> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary G.PlayerState where
+  arbitrary = G.PlayerState <$> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary G.Piece where
+  arbitrary = G.Piece <$> arbitrary
+
+instance Arbitrary G.Player where
+  arbitrary = Q.elements [G.Player1, G.Player2]
+
+instance Arbitrary (Ps.Entity DB.GameAppState) where
+  arbitrary = Ps.Entity <$> (Ps.toSqlKey <$> arbitrary) <*> arbitrary
+
+instance Arbitrary DB.GameAppState where
+  arbitrary = DB.GameAppState <$> (DB.UserKey <$> arbitrary) <*> (DB.UserKey <$> arbitrary) <*> arbitrary
+
 testAppState :: AppState
 testAppState = initialAppState {
   _users = M.fromList [
@@ -81,8 +102,6 @@ setupEnv = do
 
 runInState = flip S.runState
 
-resetAppState appStateTVar = atomically $ writeTVar appStateTVar testAppState
-
 main :: IO ()
 main = hspec $ do
   describe "Database <-> AppState" $ do
@@ -97,6 +116,12 @@ main = hspec $ do
 
     prop "Invite entity isomorphism 2" $ \invite ->
       (DB.toDbInviteEntity $ DB.fromDbInviteEntity $ invite) `shouldBe` invite
+
+    prop "GameAppState isomorphism" $ \gas ->
+      (DB.fromDbGameAppState $ DB.toDbGameAppState $ gas) `shouldBe` gas
+
+    prop "GameAppState isomorphism 2" $ \gas ->
+      (DB.toDbGameAppState $ DB.fromDbGameAppState $ gas) `shouldBe` gas
 
   describe "AppState" $ do
     describe "nextId" $ do
@@ -440,10 +465,9 @@ main = hspec $ do
 
         PA.pusherAuthenticateLogic creds user "123.456" (P.Channel P.Public "some-whatever-channel") `shouldBe` Nothing
 
-  appStateTVar <- runIO $ newTVarIO testAppState
   dbPool <- runIO $ runNoLoggingT $ createSqlitePool ":memory:" 1
 
-  describe "REST app" $ beforeAll_ setupEnv $ before_ (resetAppState appStateTVar) $ with (createApp Test appStateTVar dbPool) $ do
+  describe "REST app" $ beforeAll_ setupEnv $ with (createApp Test dbPool) $ do
     describe "/" $ do
       it "should work OK" $ do
         get "/" `shouldRespondWith` "hello"

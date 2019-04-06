@@ -25,6 +25,7 @@ import qualified Web.Scotty as S
 import qualified Data.Text as T
 
 import qualified AppState as AS
+import qualified Game as G
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 User json
@@ -40,7 +41,7 @@ Invite json
 GameAppState json
   player1 UserId
   player2 UserId
-  state T.Text
+  state G.State
   deriving Eq Show
 |]
 
@@ -73,4 +74,22 @@ toDbInvite asInvite =
   Invite {
     invitePlayer1 = UserKey $ AS._player1 asInvite,
     invitePlayer2 = UserKey $ AS._player2 asInvite
+  }
+
+fromDbGameAppState :: Entity GameAppState -> AS.GameAppState
+fromDbGameAppState eGas = AS.GameAppState {
+    AS._gameAppStateId = (fromIntegral $ fromSqlKey key),
+    AS._gameAppStatePlayers = (unUserKey $ gameAppStatePlayer1 val, unUserKey $ gameAppStatePlayer2 val),
+    AS._gameAppStateState = gameAppStateState val
+  }
+  where
+    key = entityKey eGas
+    val = entityVal eGas
+
+toDbGameAppState :: AS.GameAppState -> Entity GameAppState
+toDbGameAppState asGas = Entity (toSqlKey $ fromIntegral $ AS._gameAppStateId asGas) $
+  GameAppState {
+    gameAppStatePlayer1 = UserKey $ fst $ AS._gameAppStatePlayers asGas,
+    gameAppStatePlayer2 = UserKey $ snd $ AS._gameAppStatePlayers asGas,
+    gameAppStateState = AS._gameAppStateState asGas
   }
