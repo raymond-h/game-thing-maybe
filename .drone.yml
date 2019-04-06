@@ -3,8 +3,8 @@ pipeline:
     image: haskell:8.4.4
     group: build
     commands:
-      - apt-get update
-      - apt-get install libpq-dev
+      - apt-get -y update
+      - apt-get -y install libpq-dev
       - cd backend/
       - stack build --test --copy-bins
       - cp /root/.local/bin/main main
