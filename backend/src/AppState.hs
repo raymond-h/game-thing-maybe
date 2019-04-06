@@ -5,7 +5,7 @@
 
 module AppState where
 
--- import GHC.Generics
+import GHC.Generics
 import Control.Lens hiding ((.=))
 import Data.Maybe
 import Data.Aeson
@@ -18,7 +18,7 @@ import qualified Data.ByteString as BS
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 
-import Util (adjustMatching)
+import Util (adjustMatching, aesonLensBridgeOpts)
 import qualified Game as G
 
 type Id = Int
@@ -27,9 +27,12 @@ type UserId = T.Text
 data User = User {
   _userId :: UserId,
   _userUsername :: Maybe T.Text
-} deriving (Eq, Show)
+} deriving (Eq, Show, Generic)
 
 makeLenses ''User
+
+instance ToJSON User where toJSON = genericToJSON $ aesonLensBridgeOpts "User"
+instance FromJSON User where parseJSON = genericParseJSON $ aesonLensBridgeOpts "User"
 
 initialUser userId = User { _userId = userId, _userUsername = Nothing }
 
@@ -37,22 +40,12 @@ data Invite = Invite {
   _inviteId :: Maybe Id,
   _invitePlayer1 :: UserId,
   _invitePlayer2 :: UserId
-} deriving (Eq, Show)
+} deriving (Eq, Show, Generic)
 
 makeLenses ''Invite
 
-instance FromJSON Invite where
-  parseJSON = withObject "Invite" $ \v -> Invite
-    <$> v .: "id"
-    <*> v .: "player1"
-    <*> v .: "player2"
-
-instance ToJSON Invite where
-  toJSON invite = object [
-      "id" .= (invite^.inviteId),
-      "player1" .= (invite^.invitePlayer1),
-      "player2" .= (invite^.invitePlayer2)
-    ]
+instance ToJSON Invite where toJSON = genericToJSON $ aesonLensBridgeOpts "Invite"
+instance FromJSON Invite where parseJSON = genericParseJSON $ aesonLensBridgeOpts "Invite"
 
 inviteBelongsToUser :: UserId -> Invite -> Bool
 inviteBelongsToUser userId invite = invite^.invitePlayer1 == userId || invite^.invitePlayer2 == userId
@@ -63,23 +56,19 @@ data GameAppState = GameAppState {
   _gameAppStateId :: GameId,
   _gameAppStatePlayers :: (UserId, UserId),
   _gameAppStateState :: G.State
-} deriving (Eq, Show)
+} deriving (Eq, Show, Generic)
 
 makeLenses ''GameAppState
 
-instance ToJSON GameAppState where
-  toJSON gameAppState = object [
-      "id" .= (gameAppState^.gameAppStateId),
-      "players" .= (gameAppState^.gameAppStatePlayers),
-      "state" .= (gameAppState^.gameAppStateState)
-    ]
+instance ToJSON GameAppState where toJSON = genericToJSON $ aesonLensBridgeOpts "GameAppState"
+instance FromJSON GameAppState where parseJSON = genericParseJSON $ aesonLensBridgeOpts "GameAppState"
 
 data AppState = AppState {
   _users :: M.Map UserId User,
   _invites :: M.Map Id Invite,
   _gameAppStates :: M.Map GameId GameAppState,
   _pushCount :: Integer -- highly temporary!!
-} deriving (Eq, Show)
+} deriving (Eq, Show, Generic)
 
 makeLenses ''AppState
 

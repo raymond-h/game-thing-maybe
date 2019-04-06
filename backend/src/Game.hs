@@ -13,21 +13,23 @@ import Data.Aeson
 import Database.Persist
 import Database.Persist.Sql
 
+import Util (aesonLensBridgeOpts)
+
 data State = State {
   _statePlayerStates :: (PlayerState, PlayerState),
   _stateCurrentPlayer :: Player,
   _stateLastRoll :: Maybe Int
-} deriving (Eq, Show)
+} deriving (Eq, Show, Generic)
 
-data Player = Player1 | Player2 deriving (Eq, Show)
+data Player = Player1 | Player2 deriving (Eq, Show, Generic)
 
 data PlayerState = PlayerState {
   _playerStateWonPieces :: Int,
   _playerStateOutOfPlayPieces :: Int,
   _playerStateFieldedPieces :: [Piece]
-} deriving (Eq, Show)
+} deriving (Eq, Show, Generic)
 
-newtype Piece = Piece { _piecePosition :: Int } deriving (Eq, Show)
+newtype Piece = Piece { _piecePosition :: Int } deriving (Eq, Show, Generic)
 
 makeLenses ''State
 makeLenses ''PlayerState
@@ -45,48 +47,17 @@ initialState = State {
   _stateLastRoll = Nothing
 }
 
-instance ToJSON State where
-  toJSON state = object [
-      "playerStates" .= (state ^. statePlayerStates),
-      "currentPlayer" .= (state ^. stateCurrentPlayer),
-      "lastRoll" .= (state ^. stateLastRoll)
-    ]
+instance ToJSON State where toJSON = genericToJSON $ aesonLensBridgeOpts "State"
+instance FromJSON State where parseJSON = genericParseJSON $ aesonLensBridgeOpts "State"
 
-instance FromJSON State where
-  parseJSON = withObject "State" $ \v -> State
-    <$> v .: "playerStates"
-    <*> v .: "currentPlayer"
-    <*> v .: "lastRoll"
+instance ToJSON Player where toJSON = genericToJSON $ aesonLensBridgeOpts "Player"
+instance FromJSON Player where parseJSON = genericParseJSON $ aesonLensBridgeOpts "Player"
 
-instance ToJSON Player where
-  toJSON Player1 = "player1"
-  toJSON Player2 = "player2"
+instance ToJSON PlayerState where toJSON = genericToJSON $ aesonLensBridgeOpts "PlayerState"
+instance FromJSON PlayerState where parseJSON = genericParseJSON $ aesonLensBridgeOpts "PlayerState"
 
-instance FromJSON Player where
-  parseJSON = withText "Player" $ \v ->
-    case v of
-      "player1" -> return Player1
-      "player2" -> return Player2
-
-instance ToJSON PlayerState where
-  toJSON playerState = object [
-      "wonPieces" .= (playerState ^. playerStateWonPieces),
-      "outOfPlayPieces" .= (playerState ^. playerStateOutOfPlayPieces),
-      "fieldedPieces" .= (playerState ^. playerStateFieldedPieces)
-    ]
-
-instance FromJSON PlayerState where
-  parseJSON = withObject "PlayerState" $ \v -> PlayerState
-    <$> v .: "wonPieces"
-    <*> v .: "outOfPlayPieces"
-    <*> v .: "fieldedPieces"
-
-instance ToJSON Piece where
-  toJSON piece = object [ "position" .= (piece ^. piecePosition) ]
-
-instance FromJSON Piece where
-  parseJSON = withObject "Piece" $ \v -> Piece
-    <$> v .: "position"
+instance ToJSON Piece where toJSON = genericToJSON $ aesonLensBridgeOpts "Piece"
+instance FromJSON Piece where parseJSON = genericParseJSON $ aesonLensBridgeOpts "Piece"
 
 currentPlayerState :: Lens' State PlayerState
 currentPlayerState = lens getter setter

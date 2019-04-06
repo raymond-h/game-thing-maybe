@@ -60,14 +60,17 @@ pusherizedUserId = T.map replaceChar
     replaceChar '|' = ';'
     replaceChar c = c
 
+lowerFirst :: String -> String
+lowerFirst (c:cs) = (toLower c):cs
+
 atFieldLabelModifier :: String -> String -> String
 atFieldLabelModifier recordName fieldName =
   let
-    lowerFirst (c:cs) = (toLower c):cs
     prefix = '_':(lowerFirst recordName)
   in
     fromMaybe fieldName $ fmap lowerFirst $ stripPrefix prefix fieldName
 
 aesonLensBridgeOpts recordName = AT.defaultOptions {
-    AT.fieldLabelModifier = atFieldLabelModifier recordName
+    AT.fieldLabelModifier = atFieldLabelModifier recordName,
+    AT.constructorTagModifier = lowerFirst
   }
