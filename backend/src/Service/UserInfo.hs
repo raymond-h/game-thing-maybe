@@ -73,13 +73,17 @@ updateUserInfo auth dbPool pushClient = do
   user <- auth
   body <- S.jsonData
   let
+    isUsernameInUse uname = do
+      n <- DB.runDbPool dbPool $ Ps.count [DB.UserUsername ==. Just uname]
+      return $ n > 0
+
     updateUser user =
       let
         dbUser = DB.toDbUser user
       in
         DB.runDbPool dbPool $ Ps.replace (Ps.entityKey dbUser) (Ps.entityVal dbUser)
 
-  result <- updateUserInfoLogic updateUser (pushClient . fmap toChannel) user body
+  result <- updateUserInfoLogic isUsernameInUse updateUser (pushClient . fmap toChannel) user body
 
   case result of
     Left e -> do
@@ -88,13 +92,20 @@ updateUserInfo auth dbPool pushClient = do
     Right r -> S.json r
 
 updateUserInfoLogic :: Monad m =>
+    (T.Text -> m Bool) ->
     (User -> m ()) ->
     ([EventChannel] -> P.Event -> P.EventData -> m ()) ->
     User ->
     UserInfoBody ->
     m (Either (M.Map T.Text [T.Text]) UserInfoBody)
-updateUserInfoLogic updateUser pushClient user body = E.runExceptT $ do
+updateUserInfoLogic isUsernameInUse updateUser pushClient user body = E.runExceptT $ do
   userInfo <- E.liftEither . V.handleValidationE . validateUserInfoBody $ body
+
+  forM_ (userInfoUsername userInfo) $ \newUsername -> do
+    unless (user ^. AS.userUsername == Just newUsername) $ do
+      isInUse <- E.lift $ isUsernameInUse newUsername
+
+      when isInUse $ E.throwError $ M.singleton "username" ["Username already in use"]
 
   let
     newUser = flip execState user $ do

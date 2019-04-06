@@ -225,10 +225,13 @@ main = hspec $ do
 
     describe "user info service" $ do
       let
+        isUsernameInUse :: T.Text -> S.State AS.AppState Bool
+        isUsernameInUse uname = uses (AS.userByUsername uname) isJust
+
         updateUser :: User -> S.State AS.AppState ()
         updateUser = S.modify . AS.updateUser
 
-        testUpdateUserInfo = UI.updateUserInfoLogic updateUser pushClient
+        testUpdateUserInfo = UI.updateUserInfoLogic isUsernameInUse updateUser pushClient
 
       it "can get user info" $ do
         let
@@ -276,6 +279,32 @@ main = hspec $ do
         endAppState ^? (userById "hello")._Just.userUsername._Just `shouldBe` Just "username"
         endAppState^.pushCount `shouldBe` 0
         result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
+
+      it "disallows setting username to existing username" $ do
+        let
+          user1 = User { _userId = "hello", _userUsername = Nothing }
+          user2 = User { _userId = "other", _userUsername = Just "Existing" }
+          startAppState = addUser user2 $ addUser user1 $ initialAppState
+
+          (result, endAppState) = runInState startAppState $
+            testUpdateUserInfo user1 (UI.UserInfoBody $ Just "Existing")
+
+        endAppState `shouldBe` startAppState
+        endAppState^.pushCount `shouldBe` 0
+        result `shouldBe` Left (M.singleton "username" ["Username already in use"])
+
+      it "does not disallow setting username to your current username" $ do
+        let
+          user1 = User { _userId = "hello", _userUsername = Just "Something" }
+          user2 = User { _userId = "other", _userUsername = Just "Existing" }
+          startAppState = addUser user2 $ addUser user1 $ initialAppState
+
+          (result, endAppState) = runInState startAppState $
+            testUpdateUserInfo user1 (UI.UserInfoBody $ Just "Something")
+
+        endAppState `shouldBe` startAppState
+        endAppState^.pushCount `shouldBe` 0
+        result `shouldBe` (Right $ UI.UserInfoBody (Just "Something"))
 
     describe "invite service" $ do
       let

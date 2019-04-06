@@ -31,6 +31,7 @@ share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 User json
   Id T.Text
   username T.Text Maybe
+  UniqueUsername username !force
   deriving Eq Show
 
 Invite json
