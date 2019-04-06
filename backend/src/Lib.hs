@@ -32,6 +32,7 @@ import qualified Web.Scotty as S
 import qualified Web.Scotty.Trans as ST
 import Database.Persist as Ps
 import Database.Persist.Sqlite
+import Database.Persist.Postgresql
 import Control.Monad.Logger
 import Data.Pool
 import Control.Exception (assert)
@@ -126,8 +127,14 @@ runApp = do
   (void $ loadFile defaultConfig) `onMissingFile` return ()
 
   isDev <- fromMaybe False <$> getEnv' "DEV"
+  mDbUri <- lookupEnv "DATABASE_URL"
 
-  runNoLoggingT $ withSqlitePool "local.db" 4 $ \dbPool -> liftIO $ do
+  let
+    withPool = case mDbUri of
+      Nothing -> withSqlitePool "local.db" 4
+      Just dbUri -> withPostgresqlPool (BS.pack dbUri) 8
+
+  runNoLoggingT $ withPool $ \dbPool -> liftIO $ do
     DB.runDbPool dbPool $ runMigration DB.migrateAll
     app <- createApp (if isDev then Development else Production) dbPool
     runEnv 8080 app
