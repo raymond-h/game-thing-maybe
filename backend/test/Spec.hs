@@ -39,7 +39,7 @@ import qualified PusherCommon as PC
 import qualified Service.UserInfo as UI
 import qualified Service.Invite as I
 import qualified Service.PusherAuth as PA
-import Util (adjustMatching)
+import Util (adjustMatching, atFieldLabelModifier)
 
 instance Arbitrary AS.User where
   arbitrary = AS.User <$> arbitrary <*> arbitrary
@@ -83,9 +83,9 @@ instance Arbitrary DB.GameAppState where
 testAppState :: AppState
 testAppState = initialAppState {
   _users = M.fromList [
-    ("user1", User { _userId = "user1", _username = Nothing }),
-    ("user2", User { _userId = "user2", _username = Just "testuser2" }),
-    ("user3", User { _userId = "user3", _username = Just "anotheruser" })
+    ("user1", User { _userId = "user1", _userUsername = Nothing }),
+    ("user2", User { _userId = "user2", _userUsername = Just "testuser2" }),
+    ("user3", User { _userId = "user3", _userUsername = Just "anotheruser" })
   ]
 }
 
@@ -142,7 +142,7 @@ main = hspec $ do
       it "allows setting to Just user" $ do
         let
           appState = initialAppState
-          newUser = User { _userId = "hello", _username = Just "Hello-Person" }
+          newUser = User { _userId = "hello", _userUsername = Just "Hello-Person" }
           updatedAppState = appState & userById "hello" ?~ newUser
 
         _users updatedAppState `shouldBe` M.singleton "hello" newUser
@@ -157,15 +157,15 @@ main = hspec $ do
       it "allows modifying existing user" $ do
         let
           (_, appState) = ensureUser "hello" initialAppState
-          updatedAppState = appState & userById "hello" . traverse . username ?~ "Banana"
+          updatedAppState = appState & userById "hello" . traverse . userUsername ?~ "Banana"
 
-        appState ^.. users . at "hello" . _Just . username `shouldBe` [Nothing]
-        updatedAppState ^.. users . at "hello" . _Just . username `shouldBe` [Just "Banana"]
+        appState ^.. users . at "hello" . _Just . userUsername `shouldBe` [Nothing]
+        updatedAppState ^.. users . at "hello" . _Just . userUsername `shouldBe` [Just "Banana"]
 
     describe "userByUsername lens" $ do
       it "allows getting" $ do
         let
-          user = User { _userId = "hello", _username = Just "SomeUname" }
+          user = User { _userId = "hello", _userUsername = Just "SomeUname" }
           appState = initialAppState & AS.addUser user
 
         appState ^. userByUsername "SomeUname" `shouldBe` Just user
@@ -173,14 +173,14 @@ main = hspec $ do
       it "allows setting to Just user" $ do
         let
           appState = initialAppState
-          newUser = User { _userId = "hello", _username = Just "Hello-Person" }
+          newUser = User { _userId = "hello", _userUsername = Just "Hello-Person" }
           updatedAppState = appState & userByUsername "Hello-Person" ?~ newUser
 
         _users updatedAppState `shouldBe` M.singleton "hello" newUser
 
       it "allows setting to Nothing" $ do
         let
-          user = User { _userId = "hello", _username = Just "SomeUname" }
+          user = User { _userId = "hello", _userUsername = Just "SomeUname" }
           appState = initialAppState & AS.addUser user
           updatedAppState = appState & userByUsername "SomeUname" .~ Nothing
 
@@ -188,11 +188,11 @@ main = hspec $ do
 
       it "allows modifying existing user" $ do
         let
-          user = User { _userId = "hello", _username = Just "SomeUname" }
+          user = User { _userId = "hello", _userUsername = Just "SomeUname" }
           appState = initialAppState & AS.addUser user
-          updatedAppState = appState & userByUsername "SomeUname" . traverse . username ?~ "Banana"
+          updatedAppState = appState & userByUsername "SomeUname" . traverse . userUsername ?~ "Banana"
 
-        updatedAppState^.users.(to M.elems) `shouldBe` [User { _userId = "hello", _username = Just "Banana" }]
+        updatedAppState^.users.(to M.elems) `shouldBe` [User { _userId = "hello", _userUsername = Just "Banana" }]
 
   describe "Util" $ do
     describe "adjustMatching" $ do
@@ -207,6 +207,15 @@ main = hspec $ do
 
       prop "causes no difference if predicate matches no element and function returns Nothing" $
         \(xs :: [A]) -> adjustMatching (const False) (\Nothing -> Nothing) xs `shouldBe` xs
+
+    describe "atFieldLabelModifier" $ do
+      it "works" $ do
+        atFieldLabelModifier "User" "_userSomeField" `shouldBe` "someField"
+        atFieldLabelModifier "MultiWordName" "_multiWordNameSomeField" `shouldBe` "someField"
+
+      it "ignores fields without record name as prefix" $ do
+        atFieldLabelModifier "User" "someField" `shouldBe` "someField"
+        atFieldLabelModifier "MultiWordName" "_someField" `shouldBe` "_someField"
 
   describe "App logic" $ do
     let
@@ -223,32 +232,32 @@ main = hspec $ do
 
       it "can get user info" $ do
         let
-          user = User { _userId = "whatever", _username = Just "cool-username" }
+          user = User { _userId = "whatever", _userUsername = Just "cool-username" }
 
         UI.getUserInfoLogic user `shouldBe` UI.UserInfoBody (Just "cool-username")
 
       it "can set username" $ do
         let
-          user = User { _userId = "hello", _username = Nothing }
+          user = User { _userId = "hello", _userUsername = Nothing }
           startAppState = addUser user initialAppState
 
           (result, endAppState) = runInState startAppState $
             testUpdateUserInfo user (UI.UserInfoBody $ Just "username")
 
-        endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Just "username"
+        endAppState ^? (userById "hello")._Just.userUsername._Just `shouldBe` Just "username"
         endAppState^.pushCount `shouldBe` 1
         result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
 
       let
         usernameValidationTest un = do
           let
-            user = User { _userId = "hello", _username = Nothing }
+            user = User { _userId = "hello", _userUsername = Nothing }
             startAppState = addUser user initialAppState
 
             (result, endAppState) = runInState startAppState $
               testUpdateUserInfo user (UI.UserInfoBody $ Just un)
 
-          endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Nothing
+          endAppState ^? (userById "hello")._Just.userUsername._Just `shouldBe` Nothing
           endAppState^.pushCount `shouldBe` 0
           result ^? _Left.(at "username") `shouldSatisfy` isJust
 
@@ -258,13 +267,13 @@ main = hspec $ do
 
       it "cannot unset (username input prop is ignored if nothing)" $ do
         let
-          user = User { _userId = "hello", _username = Just "username" }
+          user = User { _userId = "hello", _userUsername = Just "username" }
           startAppState = addUser user initialAppState
 
           (result, endAppState) = runInState startAppState $
             testUpdateUserInfo user (UI.UserInfoBody Nothing)
 
-        endAppState ^? (userById "hello")._Just.username._Just `shouldBe` Just "username"
+        endAppState ^? (userById "hello")._Just.userUsername._Just `shouldBe` Just "username"
         endAppState^.pushCount `shouldBe` 0
         result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
 
@@ -302,9 +311,9 @@ main = hspec $ do
 
       it "fetches invites for user" $ do
         let
-          invite1 = Invite { _inviteId = Just 1, _player1 = "user2", _player2 = "user3" }
-          invite2 = Invite { _inviteId = Just 2, _player1 = "user3", _player2 = "user2" }
-          invite3 = Invite { _inviteId = Just 3, _player1 = "someone", _player2 = "else" }
+          invite1 = Invite { _inviteId = Just 1, _invitePlayer1 = "user2", _invitePlayer2 = "user3" }
+          invite2 = Invite { _inviteId = Just 2, _invitePlayer1 = "user3", _invitePlayer2 = "user2" }
+          invite3 = Invite { _inviteId = Just 3, _invitePlayer1 = "someone", _invitePlayer2 = "else" }
 
           startAppState = testAppState & invites .~ M.fromList [(1, invite1), (2, invite2), (3, invite3)]
           (Just user) = getUserById "user2" startAppState
@@ -336,7 +345,7 @@ main = hspec $ do
           (result, endAppState) = runInState startAppState $
             testCreateInvite user (I.InviteBodyUserId "user3")
 
-          expectedInvite = Invite { _inviteId = Just 1, _player1 = "user2", _player2 = "user3" }
+          expectedInvite = Invite { _inviteId = Just 1, _invitePlayer1 = "user2", _invitePlayer2 = "user3" }
 
         findInvitesForUser "user2" endAppState `shouldBe` [expectedInvite]
         findInvitesForUser "user3" endAppState `shouldBe` [expectedInvite]
@@ -351,7 +360,7 @@ main = hspec $ do
           (result, endAppState) = runInState startAppState $
             testCreateInvite user (I.InviteBodyUsername "anotheruser")
 
-          expectedInvite = Invite { _inviteId = Just 1, _player1 = "user2", _player2 = "user3" }
+          expectedInvite = Invite { _inviteId = Just 1, _invitePlayer1 = "user2", _invitePlayer2 = "user3" }
 
         findInvitesForUser "user2" endAppState `shouldBe` [expectedInvite]
         findInvitesForUser "user3" endAppState `shouldBe` [expectedInvite]
@@ -398,7 +407,7 @@ main = hspec $ do
 
       it "allows accepting invite" $ do
         let
-          invite = Invite { _inviteId = Just 5, _player1 = "user2", _player2 = "user3" }
+          invite = Invite { _inviteId = Just 5, _invitePlayer1 = "user2", _invitePlayer2 = "user3" }
           startAppState = testAppState & invites .~ M.singleton 5 invite
           (Just user) = getUserById "user3" startAppState
 
@@ -424,7 +433,7 @@ main = hspec $ do
       forM_ ["user1", "user2"] $ \uname ->
         it ("reports error if not exactly recipient of invite (" <> T.unpack uname <> ")") $ do
           let
-            invite = Invite { _inviteId = Just 5, _player1 = "user2", _player2 = "user3" }
+            invite = Invite { _inviteId = Just 5, _invitePlayer1 = "user2", _invitePlayer2 = "user3" }
             startAppState = testAppState & invites .~ M.singleton 5 invite
             (Just user) = getUserById uname startAppState
 
@@ -444,7 +453,7 @@ main = hspec $ do
               P.credentialsAppSecret = "some-secret",
               P.credentialsCluster = Nothing
             }
-          user = User { _userId = "hello", _username = Just "SomeUname" }
+          user = User { _userId = "hello", _userUsername = Just "SomeUname" }
           chan = P.Channel P.Private "hello-user-info"
 
         (PA.paResAuthToken . fromJust) (PA.pusherAuthenticateLogic creds user "123.456" chan)
@@ -454,14 +463,14 @@ main = hspec $ do
       it "prevents authenticating for wrong channels" $ do
         let
           creds = undefined -- should never be used by the test
-          user = User { _userId = "hello", _username = Just "SomeUname" }
+          user = User { _userId = "hello", _userUsername = Just "SomeUname" }
 
         PA.pusherAuthenticateLogic creds user "123.456" (P.Channel P.Private "user1-user-info") `shouldBe` Nothing
 
       it "prevents authenticating for public channels" $ do
         let
           creds = undefined -- should never be used by the test
-          user = User { _userId = "hello", _username = Just "SomeUname" }
+          user = User { _userId = "hello", _userUsername = Just "SomeUname" }
 
         PA.pusherAuthenticateLogic creds user "123.456" (P.Channel P.Public "some-whatever-channel") `shouldBe` Nothing
 

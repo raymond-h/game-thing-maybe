@@ -14,40 +14,42 @@ import Database.Persist
 import Database.Persist.Sql
 
 data State = State {
-  _playerStates :: (PlayerState, PlayerState),
-  _currentPlayer :: Player,
-  _lastRoll :: Maybe Int
+  _statePlayerStates :: (PlayerState, PlayerState),
+  _stateCurrentPlayer :: Player,
+  _stateLastRoll :: Maybe Int
 } deriving (Eq, Show)
 
 data Player = Player1 | Player2 deriving (Eq, Show)
 
 data PlayerState = PlayerState {
-  _wonPieces :: Int,
-  _outOfPlayPieces :: Int,
-  _fieldedPieces :: [Piece]
+  _playerStateWonPieces :: Int,
+  _playerStateOutOfPlayPieces :: Int,
+  _playerStateFieldedPieces :: [Piece]
 } deriving (Eq, Show)
 
-newtype Piece = Piece { _position :: Int } deriving (Eq, Show)
+newtype Piece = Piece { _piecePosition :: Int } deriving (Eq, Show)
 
 makeLenses ''State
 makeLenses ''PlayerState
 makeLenses ''Piece
 
 initialPlayerState = PlayerState {
-  _wonPieces = 0, _outOfPlayPieces = 7, _fieldedPieces = []
+  _playerStateWonPieces = 0,
+  _playerStateOutOfPlayPieces = 7,
+  _playerStateFieldedPieces = []
 }
 
 initialState = State {
-  _playerStates = (initialPlayerState, initialPlayerState),
-  _currentPlayer = Player1,
-  _lastRoll = Nothing
+  _statePlayerStates = (initialPlayerState, initialPlayerState),
+  _stateCurrentPlayer = Player1,
+  _stateLastRoll = Nothing
 }
 
 instance ToJSON State where
   toJSON state = object [
-      "playerStates" .= (state ^. playerStates),
-      "currentPlayer" .= (state ^. currentPlayer),
-      "lastRoll" .= (state ^. lastRoll)
+      "playerStates" .= (state ^. statePlayerStates),
+      "currentPlayer" .= (state ^. stateCurrentPlayer),
+      "lastRoll" .= (state ^. stateLastRoll)
     ]
 
 instance FromJSON State where
@@ -68,9 +70,9 @@ instance FromJSON Player where
 
 instance ToJSON PlayerState where
   toJSON playerState = object [
-      "wonPieces" .= (playerState ^. wonPieces),
-      "outOfPlayPieces" .= (playerState ^. outOfPlayPieces),
-      "fieldedPieces" .= (playerState ^. fieldedPieces)
+      "wonPieces" .= (playerState ^. playerStateWonPieces),
+      "outOfPlayPieces" .= (playerState ^. playerStateOutOfPlayPieces),
+      "fieldedPieces" .= (playerState ^. playerStateFieldedPieces)
     ]
 
 instance FromJSON PlayerState where
@@ -80,7 +82,7 @@ instance FromJSON PlayerState where
     <*> v .: "fieldedPieces"
 
 instance ToJSON Piece where
-  toJSON piece = object [ "position" .= (piece ^. position) ]
+  toJSON piece = object [ "position" .= (piece ^. piecePosition) ]
 
 instance FromJSON Piece where
   parseJSON = withObject "Piece" $ \v -> Piece
@@ -92,11 +94,11 @@ currentPlayerState = lens getter setter
     getter state = state ^. subLens state
     setter state newPlayerState = state & subLens state .~ newPlayerState
 
-    subLens state = playerStateOf $ state^.currentPlayer
+    subLens state = playerStateOf $ state^.stateCurrentPlayer
 
 playerStateOf :: Player -> Lens' State PlayerState
-playerStateOf Player1 = playerStates._1
-playerStateOf Player2 = playerStates._2
+playerStateOf Player1 = statePlayerStates._1
+playerStateOf Player2 = statePlayerStates._2
 
 opponentOf Player1 = Player2
 opponentOf Player2 = Player1

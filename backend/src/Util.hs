@@ -3,7 +3,11 @@
 module Util where
 
 import Data.Aeson
+import Data.Aeson.Types as AT
 import Data.Bifunctor
+import Data.Char
+import Data.List
+import Data.Maybe
 import Control.Monad (unless, forM_)
 import qualified Data.Map.Strict as M
 import Control.Monad.Trans (liftIO, MonadIO)
@@ -55,3 +59,15 @@ pusherizedUserId = T.map replaceChar
   where
     replaceChar '|' = ';'
     replaceChar c = c
+
+atFieldLabelModifier :: String -> String -> String
+atFieldLabelModifier recordName fieldName =
+  let
+    lowerFirst (c:cs) = (toLower c):cs
+    prefix = '_':(lowerFirst recordName)
+  in
+    fromMaybe fieldName $ fmap lowerFirst $ stripPrefix prefix fieldName
+
+aesonLensBridgeOpts recordName = AT.defaultOptions {
+    AT.fieldLabelModifier = atFieldLabelModifier recordName
+  }

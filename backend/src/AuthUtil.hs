@@ -18,6 +18,6 @@ requireUsername user =
 
 requireUsernameE :: AS.User -> Either (Status, T.Text) AS.User
 requireUsernameE user =
-  if has (username . _Just) user
+  if has (userUsername . _Just) user
     then Right user
     else Left (forbidden403, ("Must set username first" :: T.Text))

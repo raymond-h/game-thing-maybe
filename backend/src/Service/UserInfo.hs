@@ -66,7 +66,7 @@ getUserInfo :: ActionM User -> ActionM ()
 getUserInfo auth = S.json . getUserInfoLogic =<< auth
 
 getUserInfoLogic :: User -> UserInfoBody
-getUserInfoLogic user = UserInfoBody { userInfoUsername = user ^. username }
+getUserInfoLogic user = UserInfoBody { userInfoUsername = user ^. userUsername }
 
 updateUserInfo :: ActionM User -> Pool SqlBackend -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
 updateUserInfo auth dbPool pushClient = do
@@ -99,11 +99,11 @@ updateUserInfoLogic updateUser pushClient user body = E.runExceptT $ do
   let
     newUser = flip execState user $ do
       forM_ (userInfoUsername userInfo) $ \newUsername ->
-        username `assign` Just newUsername
+        userUsername `assign` Just newUsername
 
   E.lift $ updateUser newUser
 
-  let newUserInfo = UserInfoBody { userInfoUsername = newUser ^. username }
+  let newUserInfo = UserInfoBody { userInfoUsername = newUser ^. userUsername }
 
   when (newUser /= user) $ do
     E.lift $ pushClient [UserInfo (user^.userId)] "update-user-info" $ LT.toStrict $ encodeToLazyText newUserInfo

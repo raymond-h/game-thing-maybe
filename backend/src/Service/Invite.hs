@@ -119,7 +119,7 @@ createInviteLogic lookupUser addInvite pushClient user body = E.runExceptT $ do
     Just otherUser -> do
       let
         otherUserId = otherUser ^. userId
-        invite = Invite { _inviteId = Nothing, _player1 = userId', _player2 = otherUserId }
+        invite = Invite { _inviteId = Nothing, _invitePlayer1 = userId', _invitePlayer2 = otherUserId }
 
       E.liftEither $ V.noteE (status400, "Cannot invite yourself") $ guard (userId' /= otherUserId)
 
@@ -183,11 +183,11 @@ acceptInviteLogic lookupInvite removeInvite addGame pushClient user body = E.run
   mInvite <- E.lift . lookupInvite $ acceptInviteBodyInviteId body
   inv <- E.liftEither $ V.noteE (status404, "No such invite") mInvite
 
-  E.liftEither $ V.noteE (status403, "User not recipient of invite") $ guard (inv^.player2 == user^.userId)
+  E.liftEither $ V.noteE (status403, "User not recipient of invite") $ guard (inv^.invitePlayer2 == user^.userId)
 
   E.lift $ removeInvite (inv^?!inviteId._Just)
-  gas <- E.lift $ addGame (inv^.player1) (inv^.player2)
+  gas <- E.lift $ addGame (inv^.invitePlayer1) (inv^.invitePlayer2)
 
-  E.lift $ pushClient [Invites (inv^.player1), Invites (inv^.player2)] "update-invites" ""
+  E.lift $ pushClient [Invites (inv^.invitePlayer1), Invites (inv^.invitePlayer2)] "update-invites" ""
 
   return gas

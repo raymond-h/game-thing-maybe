@@ -26,17 +26,17 @@ type UserId = T.Text
 
 data User = User {
   _userId :: UserId,
-  _username :: Maybe T.Text
+  _userUsername :: Maybe T.Text
 } deriving (Eq, Show)
 
 makeLenses ''User
 
-initialUser userId = User { _userId = userId, _username = Nothing }
+initialUser userId = User { _userId = userId, _userUsername = Nothing }
 
 data Invite = Invite {
   _inviteId :: Maybe Id,
-  _player1 :: UserId,
-  _player2 :: UserId
+  _invitePlayer1 :: UserId,
+  _invitePlayer2 :: UserId
 } deriving (Eq, Show)
 
 makeLenses ''Invite
@@ -50,12 +50,12 @@ instance FromJSON Invite where
 instance ToJSON Invite where
   toJSON invite = object [
       "id" .= (invite^.inviteId),
-      "player1" .= (invite^.player1),
-      "player2" .= (invite^.player2)
+      "player1" .= (invite^.invitePlayer1),
+      "player2" .= (invite^.invitePlayer2)
     ]
 
 inviteBelongsToUser :: UserId -> Invite -> Bool
-inviteBelongsToUser userId invite = invite^.player1 == userId || invite^.player2 == userId
+inviteBelongsToUser userId invite = invite^.invitePlayer1 == userId || invite^.invitePlayer2 == userId
 
 type GameId = Int
 
@@ -102,7 +102,7 @@ userByUsername username' = users . mapListIso . predicateToAtLike pred
     mapListIso = iso M.elems (M.fromList . map (_userId &&& id))
 
     pred :: User -> Bool
-    pred u = u^.username == Just username'
+    pred u = u^.userUsername == Just username'
 
 initialAppState :: AppState
 initialAppState = AppState { _users = M.empty, _invites = M.empty, _gameAppStates = M.empty, _pushCount = 0 }
@@ -130,7 +130,7 @@ ensureUser userId = runState $ do
   gets $ fromJust . getUserById userId
 
 setUserUsername :: UserId -> T.Text -> AppState -> (Maybe User, AppState)
-setUserUsername userId newUsername = userById userId <%~ _Just . username ?~ newUsername
+setUserUsername userId newUsername = userById userId <%~ _Just . userUsername ?~ newUsername
 
 addInvite :: Invite -> AppState -> (Id, AppState)
 addInvite inv appState = (invId, newAppState)

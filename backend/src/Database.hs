@@ -49,10 +49,10 @@ runDbPool :: (MonadIO m, IsSqlBackend backend) => Pool backend -> ReaderT backen
 runDbPool pool query = liftIO $ flip runSqlPool pool $ query
 
 fromDbUser :: Entity User -> AS.User
-fromDbUser eUser = AS.User { AS._userId = (unUserKey $ entityKey eUser), AS._username = (userUsername $ entityVal eUser) }
+fromDbUser eUser = AS.User { AS._userId = (unUserKey $ entityKey eUser), AS._userUsername = (userUsername $ entityVal eUser) }
 
 toDbUser :: AS.User -> Entity User
-toDbUser asUser = Entity (UserKey $ AS._userId asUser) $ User { userUsername = AS._username asUser }
+toDbUser asUser = Entity (UserKey $ AS._userId asUser) $ User { userUsername = AS._userUsername asUser }
 
 fromDbInviteEntity :: Entity Invite -> AS.Invite
 fromDbInviteEntity eInvite = (fromDbInvite $ entityVal eInvite) {
@@ -65,15 +65,15 @@ toDbInviteEntity asInvite = Entity (toSqlKey $ fromIntegral $ fromJust $ AS._inv
 fromDbInvite :: Invite -> AS.Invite
 fromDbInvite eInvite = AS.Invite {
     AS._inviteId = Nothing,
-    AS._player1 = (unUserKey $ invitePlayer1 $ eInvite),
-    AS._player2 = (unUserKey $ invitePlayer2 $ eInvite)
+    AS._invitePlayer1 = (unUserKey $ invitePlayer1 $ eInvite),
+    AS._invitePlayer2 = (unUserKey $ invitePlayer2 $ eInvite)
   }
 
 toDbInvite :: AS.Invite -> Invite
 toDbInvite asInvite =
   Invite {
-    invitePlayer1 = UserKey $ AS._player1 asInvite,
-    invitePlayer2 = UserKey $ AS._player2 asInvite
+    invitePlayer1 = UserKey $ AS._invitePlayer1 asInvite,
+    invitePlayer2 = UserKey $ AS._invitePlayer2 asInvite
   }
 
 fromDbGameAppState :: Entity GameAppState -> AS.GameAppState
