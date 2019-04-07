@@ -8,7 +8,9 @@
     <button v-stream:click="{ subject: sendInvite$, data: inviteField }">
       Send invite
     </button>
-    <ul>
+
+    <p v-if="invites == null">Loading...</p>
+    <ul v-else-if="invites.length > 0">
       <li
         v-for="invite in invites"
         :key="invite.id"
@@ -22,6 +24,8 @@
         </button>
       </li>
     </ul>
+    <p v-else>No invites to show</p>
+
     <p>{{ sendInviteResult }}</p>
     <p>{{ acceptInviteResult }}</p>
   </div>
