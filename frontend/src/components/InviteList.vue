@@ -13,7 +13,7 @@
         v-for="invite in invites"
         :key="invite.id"
       >
-        {{ invite.id }}: {{ invite.player1 }} -> {{ invite.player2 }}
+        {{ invite.id }}: {{ getOpponentUsername(invite) }}
         <button
           v-if="isMe(invite.player2)"
           v-stream:click="{ subject: acceptInvite$, data: invite }"
@@ -28,8 +28,9 @@
 </template>
 
 <script>
+import { uniq, assign } from 'lodash';
 import * as rxjs from 'rxjs';
-import { switchMap, pluck, flatMap, catchError } from 'rxjs/operators';
+import { switchMap, pluck, flatMap, catchError, map, share, scan } from 'rxjs/operators';
 
 import * as api from '../api';
 import authService from '../api/auth';
@@ -47,18 +48,52 @@ export default {
   methods: {
     isMe(userId) {
       return userId === authService.userId;
+    },
+
+    getOpponentUserId(inv) {
+      return this.isMe(inv.player1) ? inv.player2 : inv.player1;
+    },
+
+    getOpponentUsername(inv) {
+      const opponentUid = this.getOpponentUserId(inv);
+
+      if(this.inviteUserInfo == null || this.inviteUserInfo[opponentUid] == null) {
+        return 'Loading...';
+      }
+
+      return this.inviteUserInfo[opponentUid];
     }
   },
 
   subscriptions() {
+    const invites = authService.isAuthenticated$
+      .pipe(
+        switchMap(isAuthed =>
+          isAuthed ?
+            api.getInvitesUpdates(channelPool) :
+            rxjs.NEVER
+        ),
+        share()
+      );
+
     return {
-      invites: authService.isAuthenticated$
+      invites,
+
+      inviteUserInfo: invites
         .pipe(
-          switchMap(isAuthed =>
-            isAuthed ?
-              api.getInvitesUpdates(channelPool) :
-              rxjs.NEVER
-          )
+          map(invList =>
+            invList.map(inv => this.getOpponentUserId(inv))
+          ),
+          map(uniq),
+          switchMap(uids =>
+            rxjs.merge(...uids.map(uid =>
+              api.getUserInfoForUser(uid)
+                .pipe(
+                  map(uInfo => ({ [uid]: uInfo.username }))
+                )
+            ))
+          ),
+          scan((acc, val) => assign({}, acc, val), {})
         ),
 
       sendInviteResult: this.sendInvite$

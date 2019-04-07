@@ -66,6 +66,10 @@ export function getUserInfo() {
   return fetchJsonObs(apiUrl + '/user-info');
 }
 
+export function getUserInfoForUser(userId) {
+  return fetchJsonObs(apiUrl + '/user-info/' + userId);
+}
+
 export function updateUserInfo(newUserInfo) {
   return fetchJsonObs(apiUrl + '/user-info', {
     method: 'PUT',
