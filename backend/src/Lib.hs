@@ -242,3 +242,4 @@ createApp environment dbPool = do
     S.post "/invites/accept" $ I.acceptInvite auth dbPool pushClient
 
     S.get "/games/:gameId" $ GS.getGameState (DB.toDbUser <$> auth) dbPool
+    S.post "/games/:gameId" $ GS.performMove (DB.toDbUser <$> auth) dbPool pushClient

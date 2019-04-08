@@ -534,6 +534,8 @@ main = hspec $ do
           where
             asGas = DB.fromDbGameAppState gameEntity
 
+        testPerformMove = GS.performMoveLogic lookupGame updateGame pushClient
+
       prop "allows getting game state" $ \gas -> do
         let
           result = GS.getGameStateLogic (Just $ DB.toDbGameAppState gas)
@@ -562,13 +564,13 @@ main = hspec $ do
           (Just user) = getUserById "user2" startAppState
 
           (result, endAppState) = runInState startAppState $
-            GS.performMoveLogic lookupGame updateGame (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
+            testPerformMove (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
 
         endAppState ^. AS.gameAppStates . (at 5) `shouldNotBe` startAppState ^. AS.gameAppStates . (at 5)
         endAppState `shouldNotBe` startAppState
-        -- endAppState^.pusherEventsSent `shouldMatchList` [
-        --     ([P.Channel P.Public "game-5"], "update", "")
-        --   ]
+        endAppState^.pusherEventsSent `shouldMatchList` [
+            ([P.Channel P.Public "game-5"], "update-state", "")
+          ]
         result `shouldBe` (Right $ DB.toDbGameAppState $ game { AS._gameAppStateState = expectedGameState })
 
       it "returns error if game does not exist" $ do
@@ -577,7 +579,7 @@ main = hspec $ do
           (Just user) = getUserById "user2" startAppState
 
           (result, endAppState) = runInState startAppState $
-            GS.performMoveLogic lookupGame updateGame (DB.toDbUser user) (DB.toDbGameAppStateId 5) G.RollDice
+            testPerformMove (DB.toDbUser user) (DB.toDbGameAppStateId 5) G.RollDice
 
         endAppState `shouldBe` startAppState
         endAppState^.pusherEventsSent `shouldBe` []
@@ -597,7 +599,7 @@ main = hspec $ do
           (Just user) = getUserById "user3" startAppState
 
           (result, endAppState) = runInState startAppState $
-            GS.performMoveLogic lookupGame updateGame (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
+            testPerformMove (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
 
         endAppState `shouldBe` startAppState
         endAppState^.pusherEventsSent `shouldBe` []
@@ -617,7 +619,7 @@ main = hspec $ do
           (Just user) = getUserById "user1" startAppState
 
           (result, endAppState) = runInState startAppState $
-            GS.performMoveLogic lookupGame updateGame (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
+            testPerformMove (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
 
         endAppState `shouldBe` startAppState
         endAppState^.pusherEventsSent `shouldBe` []
@@ -638,7 +640,7 @@ main = hspec $ do
           (Just user) = getUserById "user2" startAppState
 
           (result, endAppState) = runInState startAppState $
-            GS.performMoveLogic lookupGame updateGame (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
+            testPerformMove (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
 
         endAppState `shouldBe` startAppState
         endAppState^.pusherEventsSent `shouldBe` []

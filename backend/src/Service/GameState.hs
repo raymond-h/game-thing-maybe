@@ -10,6 +10,9 @@ import Network.HTTP.Types
 import qualified Control.Monad.Except as E
 import qualified Data.Text as T
 
+import qualified Network.Pusher as P
+import PusherCommon
+
 -- import AppState as AS
 import Database.Persist as Ps
 import Database.Persist.Sql as Ps
@@ -37,8 +40,8 @@ getGameStateLogic ::
   Either (Status, T.Text) (Entity DB.GameAppState)
 getGameStateLogic = V.noteE (status404, "No such game")
 
-performMove :: ActionM (Entity DB.User) -> Pool SqlBackend -> ActionM ()
-performMove auth dbPool = do
+performMove :: ActionM (Entity DB.User) -> Pool SqlBackend -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
+performMove auth dbPool pushClient = do
   user <- auth
   gameId <- Ps.toSqlKey <$> S.param "gameId"
   move <- S.jsonData
@@ -47,7 +50,7 @@ performMove auth dbPool = do
     lookupGame gameId = DB.runDbPool dbPool $ Ps.getEntity gameId
     updateGame gameEntity = DB.runDbPool dbPool $ Ps.replace (Ps.entityKey gameEntity) (Ps.entityVal gameEntity)
 
-  result <- performMoveLogic lookupGame updateGame user gameId move
+  result <- performMoveLogic lookupGame updateGame (pushClient . fmap toChannel) user gameId move
 
   case result of
     Left (status, err) -> sendErrorAndFinish status err
@@ -56,11 +59,12 @@ performMove auth dbPool = do
 performMoveLogic :: Monad m =>
   (DB.GameAppStateId -> m (Maybe (Entity DB.GameAppState))) ->
   (Entity DB.GameAppState -> m ()) ->
+  ([EventChannel] -> P.Event -> P.EventData -> m ()) ->
   Entity DB.User ->
   DB.GameAppStateId ->
   G.Move ->
   m (Either (Status, T.Text) (Entity DB.GameAppState))
-performMoveLogic lookupGame updateGame user gameId move = E.runExceptT $ do
+performMoveLogic lookupGame updateGame pushClient user gameId move = E.runExceptT $ do
   mGas <- E.lift $ lookupGame gameId
   gasEntity <- E.liftEither $ V.noteE (status404, "No such game") mGas
 
@@ -86,5 +90,5 @@ performMoveLogic lookupGame updateGame user gameId move = E.runExceptT $ do
       let newGas = gasEntity & Ps.fieldLens DB.GameAppStateState .~ newGame
 
       E.lift $ updateGame newGas
-
+      E.lift $ pushClient [Game $ Ps.entityKey gasEntity] "update-state" ""
       return newGas
