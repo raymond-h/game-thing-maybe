@@ -122,11 +122,12 @@ pusherCredentialsFromEnv = do
 
 data Environment = Production | Development | Test deriving (Eq, Show)
 
+-- we don't care if the file is missing
+loadDotenvConfig :: IO ()
+loadDotenvConfig = (void $ loadFile defaultConfig) `onMissingFile` return ()
+
 runApp :: IO ()
 runApp = do
-  -- we don't care if the file is missing
-  (void $ loadFile defaultConfig) `onMissingFile` return ()
-
   isDev <- fromMaybe False <$> getEnv' "DEV"
   mDbUri <- lookupEnv "DATABASE_URL"
 
