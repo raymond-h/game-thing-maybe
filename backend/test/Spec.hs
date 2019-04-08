@@ -39,6 +39,7 @@ import qualified PusherCommon as PC
 import qualified Service.UserInfo as UI
 import qualified Service.Invite as I
 import qualified Service.PusherAuth as PA
+import qualified Service.GameState as GS
 import Util (adjustMatching, atFieldLabelModifier)
 
 instance Arbitrary AS.User where
@@ -122,6 +123,9 @@ main = hspec $ do
 
     prop "GameAppState isomorphism 2" $ \gas ->
       (DB.toDbGameAppState $ DB.fromDbGameAppState $ gas) `shouldBe` gas
+
+    prop "GameAppState ID isomorphism" $ \gameId ->
+      (DB.fromDbGameAppStateId $ DB.toDbGameAppStateId $ gameId) `shouldBe` gameId
 
   describe "AppState" $ do
     describe "nextId" $ do
@@ -518,6 +522,24 @@ main = hspec $ do
           user = User { _userId = "hello", _userUsername = Just "SomeUname" }
 
         PA.pusherAuthenticateLogic creds user "123.456" (P.Channel P.Public "some-whatever-channel") `shouldBe` Nothing
+
+    describe "game state service" $ do
+      let
+        lookupGame :: DB.GameAppStateId -> S.State AS.AppState (Maybe (Ps.Entity DB.GameAppState))
+        lookupGame gameId = uses AS.gameAppStates $
+          fmap DB.toDbGameAppState . find (\gas -> gas ^. AS.gameAppStateId == DB.fromDbGameAppStateId gameId)
+
+      prop "allows getting game state" $ \gas -> do
+        let
+          result = GS.getGameStateLogic (Just $ DB.toDbGameAppState gas)
+
+        result `shouldBe` Right (DB.toDbGameAppState gas)
+
+      it "returns error if game does not exist" $ do
+        let
+          result = GS.getGameStateLogic Nothing
+
+        result `shouldBe` Left (status404, "No such game")
 
   dbPool <- runIO $ runNoLoggingT $ createSqlitePool ":memory:" 1
 

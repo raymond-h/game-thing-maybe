@@ -49,6 +49,7 @@ import qualified Database as DB
 import qualified Service.UserInfo as UI
 import qualified Service.Invite as I
 import qualified Service.PusherAuth as PA
+import qualified Service.GameState as GS
 
 getEnv' :: Read r => String -> IO (Maybe r)
 getEnv' var = do
@@ -238,3 +239,5 @@ createApp environment dbPool = do
     S.get "/invites" $ I.getInvites auth dbPool
     S.post "/invites" $ I.createInvite auth dbPool pushClient
     S.post "/invites/accept" $ I.acceptInvite auth dbPool pushClient
+
+    S.get "/games/:gameId" $ GS.getGameState (DB.toDbUser <$> auth) dbPool

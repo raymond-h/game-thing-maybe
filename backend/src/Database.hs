@@ -94,3 +94,9 @@ toDbGameAppState asGas = Entity (toSqlKey $ fromIntegral $ AS._gameAppStateId as
     gameAppStatePlayer2 = UserKey $ snd $ AS._gameAppStatePlayers asGas,
     gameAppStateState = AS._gameAppStateState asGas
   }
+
+fromDbGameAppStateId :: Key GameAppState -> AS.GameId
+fromDbGameAppStateId = fromIntegral . fromSqlKey
+
+toDbGameAppStateId :: AS.GameId -> Key GameAppState
+toDbGameAppStateId = toSqlKey . fromIntegral
