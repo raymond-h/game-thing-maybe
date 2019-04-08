@@ -219,9 +219,8 @@ main = hspec $ do
 
   describe "App logic" $ do
     let
-      -- TODO: Need to make this not ignore input
       pushClient :: [PC.EventChannel] -> P.Event -> P.EventData -> S.State AS.AppState ()
-      pushClient _ _ _ = AS.pushCount += 1
+      pushClient chans ev evData = AS.pusherEventsSent <>= [(PC.toChannel <$> chans, ev, evData)]
 
     describe "user info service" $ do
       let
@@ -248,7 +247,7 @@ main = hspec $ do
             testUpdateUserInfo user (UI.UserInfoBody $ Just "username")
 
         endAppState ^? (userById "hello")._Just.userUsername._Just `shouldBe` Just "username"
-        endAppState^.pushCount `shouldBe` 1
+        endAppState^.pusherEventsSent `shouldBe` [([P.Channel P.Private "hello-user-info"], "update-user-info", "{\"username\":\"username\"}")]
         result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
 
       let
@@ -261,7 +260,7 @@ main = hspec $ do
               testUpdateUserInfo user (UI.UserInfoBody $ Just un)
 
           endAppState ^? (userById "hello")._Just.userUsername._Just `shouldBe` Nothing
-          endAppState^.pushCount `shouldBe` 0
+          endAppState^.pusherEventsSent `shouldBe` []
           result ^? _Left.(at "username") `shouldSatisfy` isJust
 
       it "disallows too long username" $ usernameValidationTest "veryveryverylongusername"
@@ -277,7 +276,7 @@ main = hspec $ do
             testUpdateUserInfo user (UI.UserInfoBody Nothing)
 
         endAppState ^? (userById "hello")._Just.userUsername._Just `shouldBe` Just "username"
-        endAppState^.pushCount `shouldBe` 0
+        endAppState^.pusherEventsSent `shouldBe` []
         result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
 
       it "disallows setting username to existing username" $ do
@@ -290,7 +289,7 @@ main = hspec $ do
             testUpdateUserInfo user1 (UI.UserInfoBody $ Just "Existing")
 
         endAppState `shouldBe` startAppState
-        endAppState^.pushCount `shouldBe` 0
+        endAppState^.pusherEventsSent `shouldBe` []
         result `shouldBe` Left (M.singleton "username" ["Username already in use"])
 
       it "does not disallow setting username to your current username" $ do
@@ -303,7 +302,7 @@ main = hspec $ do
             testUpdateUserInfo user1 (UI.UserInfoBody $ Just "Something")
 
         endAppState `shouldBe` startAppState
-        endAppState^.pushCount `shouldBe` 0
+        endAppState^.pusherEventsSent `shouldBe` []
         result `shouldBe` (Right $ UI.UserInfoBody (Just "Something"))
 
       prop "allows getting user info of other users" $ \mUname -> do
@@ -374,7 +373,7 @@ main = hspec $ do
 
         findInvitesForUser "user1" endAppState `shouldBe` []
         findInvitesForUser "user3" endAppState `shouldBe` []
-        endAppState^.pushCount `shouldBe` 0
+        endAppState^.pusherEventsSent `shouldBe` []
         result `shouldBe` Left (forbidden403, "Must set username first")
 
       it "creates invites by user ID" $ do
@@ -389,7 +388,9 @@ main = hspec $ do
 
         findInvitesForUser "user2" endAppState `shouldBe` [expectedInvite]
         findInvitesForUser "user3" endAppState `shouldBe` [expectedInvite]
-        endAppState^.pushCount `shouldBe` 1
+        endAppState^.pusherEventsSent `shouldMatchList` [
+            ([P.Channel P.Private "user2-invites", P.Channel P.Private "user3-invites"], "update-invites", "")
+          ]
         result `shouldBe` Right expectedInvite
 
       it "creates invites by username" $ do
@@ -404,7 +405,9 @@ main = hspec $ do
 
         findInvitesForUser "user2" endAppState `shouldBe` [expectedInvite]
         findInvitesForUser "user3" endAppState `shouldBe` [expectedInvite]
-        endAppState^.pushCount `shouldBe` 1
+        endAppState^.pusherEventsSent `shouldMatchList` [
+            ([P.Channel P.Private "user2-invites", P.Channel P.Private "user3-invites"], "update-invites", "")
+          ]
         result `shouldBe` Right expectedInvite
 
       it "does not create invites to same user" $ do
@@ -416,7 +419,7 @@ main = hspec $ do
             testCreateInvite user (I.InviteBodyUserId "user2")
 
         findInvitesForUser "user2" endAppState `shouldBe` []
-        endAppState^.pushCount `shouldBe` 0
+        endAppState^.pusherEventsSent `shouldBe` []
         result `shouldBe` Left (badRequest400, "Cannot invite yourself")
 
       it "reports error if no user with given ID exists" $ do
@@ -429,7 +432,7 @@ main = hspec $ do
 
         findInvitesForUser "user2" endAppState `shouldBe` []
         findInvitesForUser "user3" endAppState `shouldBe` []
-        endAppState^.pushCount `shouldBe` 0
+        endAppState^.pusherEventsSent `shouldBe` []
         result `shouldBe` Left (badRequest400, "No such user")
 
       it "reports error if no user with given username exists" $ do
@@ -442,7 +445,7 @@ main = hspec $ do
 
         findInvitesForUser "user2" endAppState `shouldBe` []
         findInvitesForUser "user3" endAppState `shouldBe` []
-        endAppState^.pushCount `shouldBe` 0
+        endAppState^.pusherEventsSent `shouldBe` []
         result `shouldBe` Left (badRequest400, "No such user")
 
       it "allows accepting invite" $ do
@@ -457,7 +460,9 @@ main = hspec $ do
 
         endAppState^.invites `shouldBe` M.empty
         endAppState^.gameAppStates `shouldBe` M.singleton 1 expectedGame
-        endAppState^.pushCount `shouldBe` 1
+        endAppState^.pusherEventsSent `shouldMatchList` [
+            ([P.Channel P.Private "user2-invites", P.Channel P.Private "user3-invites"], "update-invites", "")
+          ]
         result `shouldBe` Right expectedGame
 
       it "reports error if accepting non-existing invite" $ do
@@ -481,7 +486,7 @@ main = hspec $ do
 
           endAppState^.invites `shouldBe` M.singleton 5 invite
           endAppState^.gameAppStates `shouldBe` M.empty
-          endAppState^.pushCount `shouldBe` 0
+          endAppState^.pusherEventsSent `shouldBe` []
           result `shouldBe` Left (status403, "User not recipient of invite")
 
     describe "pusher auth service" $ do

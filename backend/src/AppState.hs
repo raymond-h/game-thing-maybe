@@ -18,6 +18,9 @@ import qualified Data.ByteString as BS
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 
+import qualified Network.Pusher as P
+-- import qualified PusherCommon as PC
+
 import Util (adjustMatching, aesonLensBridgeOpts)
 import qualified Game as G
 
@@ -67,7 +70,7 @@ data AppState = AppState {
   _users :: M.Map UserId User,
   _invites :: M.Map Id Invite,
   _gameAppStates :: M.Map GameId GameAppState,
-  _pushCount :: Integer -- highly temporary!!
+  _pusherEventsSent :: [([P.Channel], P.Event, P.EventData)]
 } deriving (Eq, Show, Generic)
 
 makeLenses ''AppState
@@ -94,7 +97,7 @@ userByUsername username' = users . mapListIso . predicateToAtLike pred
     pred u = u^.userUsername == Just username'
 
 initialAppState :: AppState
-initialAppState = AppState { _users = M.empty, _invites = M.empty, _gameAppStates = M.empty, _pushCount = 0 }
+initialAppState = AppState { _users = M.empty, _invites = M.empty, _gameAppStates = M.empty, _pusherEventsSent = [] }
 
 getUserById :: UserId -> AppState -> Maybe User
 getUserById userId' appState = find (\u -> u^.userId == userId') (appState^.users)
