@@ -31,6 +31,8 @@ data PlayerState = PlayerState {
 
 newtype Piece = Piece { _piecePosition :: Int } deriving (Eq, Show, Generic)
 
+data Move = RollDice | AddPiece | MovePiece Int | Pass deriving (Eq, Show, Generic)
+
 makeLenses ''State
 makeLenses ''PlayerState
 makeLenses ''Piece
@@ -59,6 +61,9 @@ instance FromJSON PlayerState where parseJSON = genericParseJSON $ aesonLensBrid
 instance ToJSON Piece where toJSON = genericToJSON $ aesonLensBridgeOpts "Piece"
 instance FromJSON Piece where parseJSON = genericParseJSON $ aesonLensBridgeOpts "Piece"
 
+instance ToJSON Move where toJSON = genericToJSON $ aesonLensBridgeOpts "Move"
+instance FromJSON Move where parseJSON = genericParseJSON $ aesonLensBridgeOpts "Move"
+
 currentPlayerState :: Lens' State PlayerState
 currentPlayerState = lens getter setter
   where
@@ -75,6 +80,10 @@ opponentOf Player1 = Player2
 opponentOf Player2 = Player1
 
 next = opponentOf
+
+performMove :: Move -> State -> Maybe State
+performMove AddPiece _ = Nothing
+performMove _ state = Just $ (state & stateLastRoll ?~ 4)
 
 instance PersistFieldSql State where
   sqlType _ = SqlString

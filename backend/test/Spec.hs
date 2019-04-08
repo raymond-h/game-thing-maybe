@@ -529,6 +529,11 @@ main = hspec $ do
         lookupGame gameId = uses AS.gameAppStates $
           fmap DB.toDbGameAppState . find (\gas -> gas ^. AS.gameAppStateId == DB.fromDbGameAppStateId gameId)
 
+        updateGame :: Ps.Entity DB.GameAppState -> S.State AS.AppState ()
+        updateGame gameEntity = S.modify $ AS.gameAppStates . at (asGas^.gameAppStateId) ?~ asGas
+          where
+            asGas = DB.fromDbGameAppState gameEntity
+
       prop "allows getting game state" $ \gas -> do
         let
           result = GS.getGameStateLogic (Just $ DB.toDbGameAppState gas)
@@ -540,6 +545,104 @@ main = hspec $ do
           result = GS.getGameStateLogic Nothing
 
         result `shouldBe` Left (status404, "No such game")
+
+      it "lets current player perform a move" $ do
+        let
+          gameId = 5
+          game = AS.GameAppState {
+              AS._gameAppStateId = gameId,
+              AS._gameAppStatePlayers = ("user2", "user3"),
+              AS._gameAppStateState = G.initialState
+            }
+          move = G.RollDice
+
+          (Just expectedGameState) = G.performMove move (AS._gameAppStateState game)
+
+          startAppState = testAppState & gameAppStates .~ M.singleton gameId game
+          (Just user) = getUserById "user2" startAppState
+
+          (result, endAppState) = runInState startAppState $
+            GS.performMoveLogic lookupGame updateGame (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
+
+        endAppState ^. AS.gameAppStates . (at 5) `shouldNotBe` startAppState ^. AS.gameAppStates . (at 5)
+        endAppState `shouldNotBe` startAppState
+        -- endAppState^.pusherEventsSent `shouldMatchList` [
+        --     ([P.Channel P.Public "game-5"], "update", "")
+        --   ]
+        result `shouldBe` (Right $ DB.toDbGameAppState $ game { AS._gameAppStateState = expectedGameState })
+
+      it "returns error if game does not exist" $ do
+        let
+          startAppState = testAppState
+          (Just user) = getUserById "user2" startAppState
+
+          (result, endAppState) = runInState startAppState $
+            GS.performMoveLogic lookupGame updateGame (DB.toDbUser user) (DB.toDbGameAppStateId 5) G.RollDice
+
+        endAppState `shouldBe` startAppState
+        endAppState^.pusherEventsSent `shouldBe` []
+        result `shouldBe` Left (status404, "No such game")
+
+      it "does not let the player that is not the current player perform a move" $ do
+        let
+          gameId = 5
+          game = AS.GameAppState {
+              AS._gameAppStateId = gameId,
+              AS._gameAppStatePlayers = ("user2", "user3"),
+              AS._gameAppStateState = G.initialState
+            }
+          move = G.RollDice
+
+          startAppState = testAppState & gameAppStates .~ M.singleton gameId game
+          (Just user) = getUserById "user3" startAppState
+
+          (result, endAppState) = runInState startAppState $
+            GS.performMoveLogic lookupGame updateGame (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
+
+        endAppState `shouldBe` startAppState
+        endAppState^.pusherEventsSent `shouldBe` []
+        result `shouldBe` Left (status400, "Not this player's turn")
+
+      it "does not let any user who is not a player perform a move" $ do
+        let
+          gameId = 5
+          game = AS.GameAppState {
+              AS._gameAppStateId = gameId,
+              AS._gameAppStatePlayers = ("user2", "user3"),
+              AS._gameAppStateState = G.initialState
+            }
+          move = G.RollDice
+
+          startAppState = testAppState & gameAppStates .~ M.singleton gameId game
+          (Just user) = getUserById "user1" startAppState
+
+          (result, endAppState) = runInState startAppState $
+            GS.performMoveLogic lookupGame updateGame (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
+
+        endAppState `shouldBe` startAppState
+        endAppState^.pusherEventsSent `shouldBe` []
+        result `shouldBe` Left (status400, "User not a player in this game")
+
+      it "reports when invalid move performed" $ do
+        let
+          gameId = 5
+          game = AS.GameAppState {
+              AS._gameAppStateId = gameId,
+              AS._gameAppStatePlayers = ("user2", "user3"),
+              AS._gameAppStateState = G.initialState
+            }
+          -- adding a piece before rolling dice is no bueno, better report that to user
+          move = G.AddPiece
+
+          startAppState = testAppState & gameAppStates .~ M.singleton gameId game
+          (Just user) = getUserById "user2" startAppState
+
+          (result, endAppState) = runInState startAppState $
+            GS.performMoveLogic lookupGame updateGame (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
+
+        endAppState `shouldBe` startAppState
+        endAppState^.pusherEventsSent `shouldBe` []
+        result `shouldBe` Left (status400, "Invalid move")
 
   dbPool <- runIO $ runNoLoggingT $ createSqlitePool ":memory:" 1
 
