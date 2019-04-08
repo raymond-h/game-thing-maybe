@@ -31,7 +31,9 @@ data PlayerState = PlayerState {
 
 newtype Piece = Piece { _piecePosition :: Int } deriving (Eq, Show, Generic)
 
-data Move = RollDice | AddPiece | MovePiece Int | Pass deriving (Eq, Show, Generic)
+data Action = ActionSetDiceRolls Int | ActionAddPiece | ActionMovePiece Int | ActionPass deriving (Eq, Show, Generic)
+
+data Move = MoveRollDice | MoveAddPiece | MoveMovePiece Int | MovePass deriving (Eq, Show, Generic)
 
 makeLenses ''State
 makeLenses ''PlayerState
@@ -81,9 +83,19 @@ opponentOf Player2 = Player1
 
 next = opponentOf
 
-performMove :: Move -> State -> Maybe State
-performMove AddPiece _ = Nothing
-performMove _ state = Just $ (state & stateLastRoll ?~ 4)
+applyAction :: Action -> State -> Maybe State
+-- should actually make sure rolling dice is a valid action in this state
+applyAction (ActionSetDiceRolls roll) state = Just $ state & stateLastRoll ?~ roll
+applyAction _ _ = Nothing
+
+moveToAction :: Monad m => m Int -> Move -> m Action
+moveToAction randomDice MoveRollDice = ActionSetDiceRolls <$> randomDice
+moveToAction _ MoveAddPiece = return ActionAddPiece
+moveToAction _ (MoveMovePiece n) = return (ActionMovePiece n)
+moveToAction _ MovePass = return ActionPass
+
+performMove :: Monad m => m Int -> Move -> State -> m (Maybe State)
+performMove randomDice move state = applyAction <$> moveToAction randomDice move <*> pure state
 
 instance PersistFieldSql State where
   sqlType _ = SqlString

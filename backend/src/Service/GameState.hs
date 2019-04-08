@@ -9,6 +9,7 @@ import Web.Scotty as S
 import Network.HTTP.Types
 import qualified Control.Monad.Except as E
 import qualified Data.Text as T
+import System.Random (randomRIO)
 
 import qualified Network.Pusher as P
 import PusherCommon
@@ -47,16 +48,18 @@ performMove auth dbPool pushClient = do
   move <- S.jsonData
 
   let
+    randomDice = E.liftIO $ randomRIO (0, 4)
     lookupGame gameId = DB.runDbPool dbPool $ Ps.getEntity gameId
     updateGame gameEntity = DB.runDbPool dbPool $ Ps.replace (Ps.entityKey gameEntity) (Ps.entityVal gameEntity)
 
-  result <- performMoveLogic lookupGame updateGame (pushClient . fmap toChannel) user gameId move
+  result <- performMoveLogic randomDice lookupGame updateGame (pushClient . fmap toChannel) user gameId move
 
   case result of
     Left (status, err) -> sendErrorAndFinish status err
     Right gas -> S.json gas
 
 performMoveLogic :: Monad m =>
+  m Int ->
   (DB.GameAppStateId -> m (Maybe (Entity DB.GameAppState))) ->
   (Entity DB.GameAppState -> m ()) ->
   ([EventChannel] -> P.Event -> P.EventData -> m ()) ->
@@ -64,7 +67,7 @@ performMoveLogic :: Monad m =>
   DB.GameAppStateId ->
   G.Move ->
   m (Either (Status, T.Text) (Entity DB.GameAppState))
-performMoveLogic lookupGame updateGame pushClient user gameId move = E.runExceptT $ do
+performMoveLogic randomDice lookupGame updateGame pushClient user gameId move = E.runExceptT $ do
   mGas <- E.lift $ lookupGame gameId
   gasEntity <- E.liftEither $ V.noteE (status404, "No such game") mGas
 
@@ -82,7 +85,7 @@ performMoveLogic lookupGame updateGame pushClient user gameId move = E.runExcept
   E.when (currentPlayer /= Ps.entityKey user) $
     E.throwError (status400, "Not this player's turn")
 
-  let mNewGame = G.performMove move $ DB.gameAppStateState $ Ps.entityVal gasEntity
+  mNewGame <- E.lift $ G.performMove randomDice move $ DB.gameAppStateState $ Ps.entityVal gasEntity
 
   case mNewGame of
     Nothing -> E.throwError (status400, "Invalid move")

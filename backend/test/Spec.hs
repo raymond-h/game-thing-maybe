@@ -534,7 +534,9 @@ main = hspec $ do
           where
             asGas = DB.fromDbGameAppState gameEntity
 
-        testPerformMove = GS.performMoveLogic lookupGame updateGame pushClient
+        randomDice = return 4 -- chosen by fair dice roll. guaranteed to be random.
+
+        testPerformMove = GS.performMoveLogic randomDice lookupGame updateGame pushClient
 
       prop "allows getting game state" $ \gas -> do
         let
@@ -556,9 +558,9 @@ main = hspec $ do
               AS._gameAppStatePlayers = ("user2", "user3"),
               AS._gameAppStateState = G.initialState
             }
-          move = G.RollDice
+          move = G.MoveRollDice
 
-          (Just expectedGameState) = G.performMove move (AS._gameAppStateState game)
+          (Just expectedGameState) = G.applyAction (G.ActionSetDiceRolls 4) (AS._gameAppStateState game)
 
           startAppState = testAppState & gameAppStates .~ M.singleton gameId game
           (Just user) = getUserById "user2" startAppState
@@ -579,7 +581,7 @@ main = hspec $ do
           (Just user) = getUserById "user2" startAppState
 
           (result, endAppState) = runInState startAppState $
-            testPerformMove (DB.toDbUser user) (DB.toDbGameAppStateId 5) G.RollDice
+            testPerformMove (DB.toDbUser user) (DB.toDbGameAppStateId 5) G.MoveRollDice
 
         endAppState `shouldBe` startAppState
         endAppState^.pusherEventsSent `shouldBe` []
@@ -593,7 +595,7 @@ main = hspec $ do
               AS._gameAppStatePlayers = ("user2", "user3"),
               AS._gameAppStateState = G.initialState
             }
-          move = G.RollDice
+          move = G.MoveRollDice
 
           startAppState = testAppState & gameAppStates .~ M.singleton gameId game
           (Just user) = getUserById "user3" startAppState
@@ -613,7 +615,7 @@ main = hspec $ do
               AS._gameAppStatePlayers = ("user2", "user3"),
               AS._gameAppStateState = G.initialState
             }
-          move = G.RollDice
+          move = G.MoveRollDice
 
           startAppState = testAppState & gameAppStates .~ M.singleton gameId game
           (Just user) = getUserById "user1" startAppState
@@ -634,7 +636,7 @@ main = hspec $ do
               AS._gameAppStateState = G.initialState
             }
           -- adding a piece before rolling dice is no bueno, better report that to user
-          move = G.AddPiece
+          move = G.MoveAddPiece
 
           startAppState = testAppState & gameAppStates .~ M.singleton gameId game
           (Just user) = getUserById "user2" startAppState

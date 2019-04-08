@@ -53,6 +53,7 @@ dependencies:
 - persistent-postgresql
 - monad-logger
 - resource-pool
+- random
 
 library:
   source-dirs: src
