@@ -3,7 +3,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-import Data.Maybe (isJust, fromJust)
+import Data.Maybe (isJust, fromJust, isNothing)
 import Data.Either (isLeft)
 import Control.Lens hiding ((.=))
 import Data.Aeson hiding (json)
@@ -15,6 +15,8 @@ import Test.Hspec.Wai
 import Test.Hspec.Wai.JSON
 import qualified Test.Hspec.Wai.QuickCheck as WQC
 import Test.QuickCheck as Q
+import Test.QuickCheck (suchThat)
+import Test.QuickCheck.Gen as Q
 import Test.QuickCheck.Poly
 import Data.Monoid
 import Data.Foldable
@@ -81,6 +83,11 @@ instance Arbitrary (Ps.Entity DB.GameAppState) where
 instance Arbitrary DB.GameAppState where
   arbitrary = DB.GameAppState <$> (DB.UserKey <$> arbitrary) <*> (DB.UserKey <$> arbitrary) <*> arbitrary
 
+newtype Roll = Roll { getRoll :: Int } deriving (Eq, Show)
+
+instance Arbitrary Roll where
+  arbitrary = Roll <$> Q.choose (0, 4)
+
 testAppState :: AppState
 testAppState = initialAppState {
   _users = M.fromList [
@@ -105,6 +112,44 @@ runInState = flip S.runState
 
 main :: IO ()
 main = hspec $ do
+  describe "game logic" $ do
+    describe "hasPieceAt" $ do
+      it "works" $ do
+        let
+          gameState = G.initialState
+              & G.statePlayerStates . _1 . G.playerStateOutOfPlayPieces .~ 6
+              & G.statePlayerStates . _1 . G.playerStateFieldedPieces .~ [G.Piece 2]
+
+        G.hasPieceAt 2 G.Player1 gameState `shouldBe` True
+        G.hasPieceAt 3 G.Player1 gameState `shouldBe` False
+
+    describe "applyAction" $ do
+      prop "should allow setting dice roll if none is currently set" $ \gameState (Roll roll) ->
+        isNothing (gameState ^. G.stateLastRoll) ==> do
+          let
+            (Just newState) = G.applyAction (G.ActionSetDiceRolls roll) gameState
+
+          newState ^. G.stateLastRoll `shouldBe` Just roll
+
+      prop "should not allow setting dice roll if one is currently set" $ \gameState (Roll roll) ->
+        isJust (gameState ^. G.stateLastRoll) ==> do
+          G.applyAction (G.ActionSetDiceRolls roll) gameState `shouldBe` Nothing
+
+      prop "should only allow valid rolls" $ \gameState ->
+        isNothing (gameState ^. G.stateLastRoll) ==>
+          Q.forAll (arbitrary `suchThat` (not . G.isValidRoll)) $ \invalidRoll ->
+            G.applyAction (G.ActionSetDiceRolls invalidRoll) gameState `shouldBe` Nothing
+
+      prop "all other actions require dice to have been rolled" $ \gameState n ->
+        isNothing (gameState ^. G.stateLastRoll) ==>
+          Q.forAll (Q.elements [G.ActionAddPiece, G.ActionMovePiece n, G.ActionPass]) $ \action ->
+            G.applyAction action gameState `shouldBe` Nothing
+
+      prop "passing resets roll to nothing" $ \gameState ->
+        isJust (gameState ^. G.stateLastRoll) ==> do
+          let (Just newState) = G.applyAction G.ActionPass gameState
+          newState ^. G.stateLastRoll `shouldBe` Nothing
+
   describe "Database <-> AppState" $ do
     prop "User isomorphism" $ \user ->
       (DB.fromDbUser $ DB.toDbUser $ user) `shouldBe` user

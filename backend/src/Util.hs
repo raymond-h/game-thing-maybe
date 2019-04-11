@@ -8,7 +8,7 @@ import Data.Bifunctor
 import Data.Char
 import Data.List
 import Data.Maybe
-import Control.Monad (unless, forM_)
+import Control.Monad (unless, forM_, MonadPlus, guard)
 import qualified Data.Map.Strict as M
 import Control.Monad.Trans (liftIO, MonadIO)
 import Control.Concurrent.STM hiding (check)
@@ -74,3 +74,6 @@ aesonLensBridgeOpts recordName = AT.defaultOptions {
     AT.fieldLabelModifier = atFieldLabelModifier recordName,
     AT.constructorTagModifier = lowerFirst
   }
+
+guardM :: MonadPlus m => m Bool -> m ()
+guardM fp = fp >>= guard

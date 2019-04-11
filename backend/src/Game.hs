@@ -7,13 +7,16 @@
 module Game where
 
 import GHC.Generics
-import Control.Lens hiding ((.=))
-import Data.Aeson
+import Control.Lens
+import Data.Aeson hiding ((.=))
+import Data.Maybe (isNothing, isJust)
+import Control.Monad (guard, unless, when)
+import qualified Control.Monad.State.Strict as S
 
 import Database.Persist
 import Database.Persist.Sql
 
-import Util (aesonLensBridgeOpts)
+import Util (aesonLensBridgeOpts, guardM)
 
 data State = State {
   _statePlayerStates :: (PlayerState, PlayerState),
@@ -83,10 +86,79 @@ opponentOf Player2 = Player1
 
 next = opponentOf
 
+hasPieceAt :: Int -> Player -> State -> Bool
+hasPieceAt pos player = anyOf ((playerStateOf player).playerStateFieldedPieces.traverse.piecePosition) (==pos)
+
+isPositionOccupied :: Int -> State -> Bool
+isPositionOccupied pos state = hasPieceAt pos Player1 state || hasPieceAt pos Player2 state
+
+isRerollSpot pos = pos `elem` [3, 7, 13]
+isDangerZone pos = pos `elem` [4..11]
+isSafeSpot pos = pos == 7
+
+isValidRoll :: Int -> Bool
+isValidRoll = (`elem` [0..4])
+
 applyAction :: Action -> State -> Maybe State
--- should actually make sure rolling dice is a valid action in this state
-applyAction (ActionSetDiceRolls roll) state = Just $ state & stateLastRoll ?~ roll
-applyAction _ _ = Nothing
+applyAction (ActionSetDiceRolls roll) = S.execStateT $ do
+  guard $ isValidRoll roll
+  guardM $ uses stateLastRoll isNothing
+  stateLastRoll ?= roll
+
+applyAction ActionAddPiece = S.execStateT $ do
+  lastRoll <- S.lift =<< use stateLastRoll
+  guard $ lastRoll /= 0
+
+  guardM $ uses (currentPlayerState.playerStateOutOfPlayPieces) (>0)
+
+  currentPlayer <- use stateCurrentPlayer
+  let newPos = lastRoll-1
+
+  guardM $ S.gets (not . hasPieceAt newPos currentPlayer)
+
+  currentPlayerState.playerStateOutOfPlayPieces -= 1
+  currentPlayerState.playerStateFieldedPieces <>= [Piece newPos]
+
+  stateLastRoll .= Nothing
+  unless (isRerollSpot newPos) $ stateCurrentPlayer %= opponentOf
+
+applyAction (ActionMovePiece n) = S.execStateT $ do
+  lastRoll <- S.lift =<< use stateLastRoll
+  guard $ lastRoll /= 0
+
+  piece <- S.lift =<< preuse (currentPlayerState.playerStateFieldedPieces.(ix n))
+  let newPos = piece^.piecePosition + lastRoll
+
+  guard $ newPos <= 14
+
+  currentPlayer <- use stateCurrentPlayer
+  guardM $ S.gets (not . hasPieceAt newPos currentPlayer)
+
+  if newPos == 14 then do
+    currentPlayerState.playerStateWonPieces += 1
+    currentPlayerState.playerStateFieldedPieces %= filter (/=piece)
+
+  else do
+    let opponent = opponentOf currentPlayer
+
+    isNewPosOccupiedByOpponent <- S.gets $ hasPieceAt newPos opponent
+
+    when (isDangerZone newPos && isNewPosOccupiedByOpponent) $ do
+      guard $ not (isSafeSpot newPos)
+
+      (playerStateOf opponent).playerStateFieldedPieces %= filter (\p -> p^.piecePosition /= newPos)
+      (playerStateOf opponent).playerStateOutOfPlayPieces += 1
+
+    currentPlayerState.playerStateFieldedPieces.(ix n).piecePosition .= newPos
+
+  stateLastRoll .= Nothing
+  unless (isRerollSpot newPos) $ stateCurrentPlayer %= opponentOf
+
+applyAction ActionPass = S.execStateT $ do
+  guardM $ uses stateLastRoll isJust
+
+  stateLastRoll .= Nothing
+  stateCurrentPlayer %= opponentOf
 
 moveToAction :: Monad m => m Int -> Move -> m Action
 moveToAction randomDice MoveRollDice = ActionSetDiceRolls <$> randomDice
