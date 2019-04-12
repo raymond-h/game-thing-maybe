@@ -121,3 +121,17 @@ export function acceptInvite(inviteId) {
     body: JSON.stringify({ id: inviteId })
   });
 }
+
+export function getGames() {
+  return fetchJsonObs(apiUrl + '/games');
+}
+
+export function getGamesUpdates(channelPool) {
+  const userId = authService.userId;
+  const channelName = `private-${userId.replace(/\|/, ';')}-invites`;
+  return rxjs.merge(
+    getGames(),
+    channelEventObs(channelPool, channelName, 'update-invites')
+      .pipe(flatMap(() => getGames()))
+  );
+}

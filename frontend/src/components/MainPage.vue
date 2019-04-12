@@ -8,7 +8,9 @@
         :disabled="isUsernameBeingChanged"
       >{{ isUsernameBeingChanged ? 'Changing...' : 'Change username' }}</button>
     </p>
-    <InviteList />
+
+    <my-invite-list></my-invite-list>
+    <my-game-list></my-game-list>
   </div>
 </template>
 
@@ -21,10 +23,12 @@ import authService from '../api/auth';
 import { channelPool } from '../api/pusher';
 
 import InviteList from './InviteList';
+import GameList from './GameList';
 
 export default {
   components: {
-    InviteList
+    'my-invite-list': InviteList,
+    'my-game-list': GameList
   },
 
   domStreams: ['changeUsernameBtn$'],

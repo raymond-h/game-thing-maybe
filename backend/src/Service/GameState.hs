@@ -24,6 +24,15 @@ import qualified Validation as V
 
 import Util (sendErrorAndFinish)
 
+getGameStates :: ActionM (Entity DB.User) -> Pool SqlBackend -> ActionM ()
+getGameStates auth dbPool = do
+  user <- auth
+  let userKey = Ps.entityKey user
+
+  games <- DB.runDbPool dbPool $ Ps.selectList ([DB.GameAppStatePlayer1 ==. userKey] ||. [DB.GameAppStatePlayer2 ==. userKey]) []
+
+  S.json games
+
 getGameState :: ActionM (Entity DB.User) -> Pool SqlBackend -> ActionM ()
 getGameState _ dbPool = do
   gameId <- Ps.toSqlKey <$> S.param "gameId"
