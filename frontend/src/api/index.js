@@ -135,3 +135,26 @@ export function getGamesUpdates(channelPool) {
       .pipe(flatMap(() => getGames()))
   );
 }
+
+export function getGame(gameId) {
+  return fetchJsonObs(apiUrl + '/games/' + gameId);
+}
+
+export function getGameUpdates(channelPool, gameId) {
+  const channelName = `game-${gameId}`;
+  return rxjs.merge(
+    getGame(gameId),
+    channelEventObs(channelPool, channelName, 'update-state')
+      .pipe(flatMap(() => getGame(gameId)))
+  );
+}
+
+export function performMove(gameId, body) {
+  return fetchJsonObs(apiUrl + '/games/' + gameId, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8'
+    },
+    body: JSON.stringify(body)
+  });
+}
