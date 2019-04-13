@@ -1,27 +1,52 @@
 <template>
   <div>
-    <h3 v-if="winner != null">{{ winner === 'player1' ? 'Player 1' : 'Player 2' }} wins!</h3>
+    <h3 v-if="winner != null">
+      {{ winner === 'player1' ? 'Player 1' : 'Player 2' }} wins!
+    </h3>
 
-    <p class="player-info player2">Player 2 ({{ game.player2 }}): {{game.state.playerStates[1].wonPieces}} won pieces, {{game.state.playerStates[1].outOfPlayPieces}} pieces out of play</p>
+    <p class="player-info player2">
+      Player 2 ({{ game.player2 }}): {{ game.state.playerStates[1].wonPieces }} won pieces, {{ game.state.playerStates[1].outOfPlayPieces }} pieces out of play
+    </p>
 
     <div class="container">
-      <img src="./urboard.png" alt="Royal game of Ur board">
+      <img
+        src="./urboard.png"
+        alt="Royal game of Ur board"
+      >
 
       <div
         v-for="piece in pieces"
+        :key="piece.ix"
         :class="['piece', piece.player]"
         :style="{left: piece.x + 'px', top: piece.y + 'px'}"
-        @click="piece.isMine && isMyTurn ? $emit('move', piece.ix) : null">
-      </div>
+        @click="piece.isMine && isMyTurn ? $emit('move', piece.ix) : null"
+      />
     </div>
 
-    <p class="player-info player1">Player 1 ({{ game.player1 }}): {{game.state.playerStates[0].wonPieces}} won pieces, {{game.state.playerStates[0].outOfPlayPieces}} pieces out of play</p>
+    <p class="player-info player1">
+      Player 1 ({{ game.player1 }}): {{ game.state.playerStates[0].wonPieces }} won pieces, {{ game.state.playerStates[0].outOfPlayPieces }} pieces out of play
+    </p>
 
     <p>Last dice roll: {{ game.state.lastRoll }}</p>
     <template v-if="viewerType != null && winner == null">
-      <button @click="$emit('roll')" :disabled="!isMyTurn">Roll</button>
-      <button @click="$emit('add')" :disabled="!isMyTurn">Add piece</button>
-      <button @click="$emit('pass')" :disabled="!isMyTurn">Pass</button>
+      <button
+        :disabled="!isMyTurn"
+        @click="$emit('roll')"
+      >
+        Roll
+      </button>
+      <button
+        :disabled="!isMyTurn"
+        @click="$emit('add')"
+      >
+        Add piece
+      </button>
+      <button
+        :disabled="!isMyTurn"
+        @click="$emit('pass')"
+      >
+        Pass
+      </button>
     </template>
   </div>
 </template>
@@ -50,7 +75,16 @@ function screenCoords(position, player) {
 }
 
 export default {
-  props: ['game', 'viewerType'],
+  props: {
+    game: {
+      type: Object,
+      default: null
+    },
+    viewerType: {
+      type: String,
+      default: null
+    }
+  },
 
   computed: {
     winner() {
@@ -64,7 +98,7 @@ export default {
       else if(this.game.state.playerStates[1].wonPieces === 7) {
         return 'player2';
       }
-      else return null;
+      return null;
     },
 
     pieces() {

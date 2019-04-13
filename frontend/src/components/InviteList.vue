@@ -9,7 +9,9 @@
       Send invite
     </button>
 
-    <p v-if="invites == null">Loading...</p>
+    <p v-if="invites == null">
+      Loading...
+    </p>
     <ul v-else-if="invites.length > 0">
       <li
         v-for="invite in invites"
@@ -24,7 +26,9 @@
         </button>
       </li>
     </ul>
-    <p v-else>No invites to show</p>
+    <p v-else>
+      No invites to show
+    </p>
 
     <p>{{ sendInviteResult }}</p>
     <p>{{ acceptInviteResult }}</p>

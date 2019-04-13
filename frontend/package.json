@@ -41,5 +41,8 @@
     "vue-hot-reload-api": "^2.3.1",
     "vue-router": "^3.0.2",
     "vue-rx": "^6.0.1"
+  },
+  "posthtml": {
+    "recognizeSelfClosing": true
   }
 }

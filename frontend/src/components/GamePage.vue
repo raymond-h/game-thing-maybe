@@ -1,17 +1,16 @@
 <template>
   <div>
-    <h1>Game {{gameId}}</h1>
+    <h1>Game {{ gameId }}</h1>
 
     <my-game
       v-if="game != null"
-      :game="game"
-      :viewer-type="whichPlayer"
       v-stream:roll="gameAction$"
       v-stream:move="gameAction$"
       v-stream:add="gameAction$"
       v-stream:pass="gameAction$"
-    >
-    </my-game>
+      :game="game"
+      :viewer-type="whichPlayer"
+    />
   </div>
 </template>
 
@@ -26,10 +25,15 @@ import { channelPool } from '../api/pusher';
 import Game from './Game';
 
 export default {
-  props: ['gameId'],
-
   components: {
     'my-game': Game
+  },
+
+  props: {
+    gameId: {
+      type: String,
+      default: null
+    }
   },
 
   computed: {
@@ -44,7 +48,7 @@ export default {
       else if(this.game.player2 === this.ownId) {
         return 'player2';
       }
-      else return null;
+      return null;
     }
   },
 
@@ -71,11 +75,11 @@ export default {
         .pipe(
           map(ev => {
             switch(ev.event.name) {
-              case 'roll': return { tag: 'moveRollDice' };
-              case 'add': return { tag: 'moveAddPiece' };
-              case 'move': return { tag: 'moveMovePiece', contents: ev.event.msg };
-              case 'pass': return { tag: 'movePass' };
-              default: return null;
+            case 'roll': return { tag: 'moveRollDice' };
+            case 'add': return { tag: 'moveAddPiece' };
+            case 'move': return { tag: 'moveMovePiece', contents: ev.event.msg };
+            case 'pass': return { tag: 'movePass' };
+            default: return null;
             }
           }),
           flatMap(move =>

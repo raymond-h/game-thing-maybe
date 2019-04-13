@@ -1,16 +1,20 @@
 <template>
   <div>
-    <p>
-      This is the main page!! {{ userInfo }}
-      <input type="text" v-model="newUsername">
-      <button
-        v-stream:click="{ subject: changeUsernameBtn$, data: newUsername }"
-        :disabled="isUsernameBeingChanged"
-      >{{ isUsernameBeingChanged ? 'Changing...' : 'Change username' }}</button>
-    </p>
+    <p>This is the main page!! {{ userInfo }}</p>
 
-    <my-invite-list></my-invite-list>
-    <my-game-list></my-game-list>
+    <input
+      v-model="newUsername"
+      type="text"
+    >
+    <button
+      v-stream:click="{ subject: changeUsernameBtn$, data: newUsername }"
+      :disabled="isUsernameBeingChanged"
+    >
+      {{ isUsernameBeingChanged ? 'Changing...' : 'Change username' }}
+    </button>
+
+    <my-invite-list />
+    <my-game-list />
   </div>
 </template>
 

@@ -2,16 +2,22 @@
   <div>
     <h2>Ongoing games</h2>
 
-    <p v-if="games == null">Loading...</p>
+    <p v-if="games == null">
+      Loading...
+    </p>
     <ul v-else-if="games.length > 0">
       <li
         v-for="game in games"
         :key="game.id"
       >
-        <router-link :to="`/games/${game.id}`">{{game.id}}</router-link>
+        <RouterLink :to="`/games/${game.id}`">
+          {{ game.id }}
+        </RouterLink>
       </li>
     </ul>
-    <p v-else>No games to show</p>
+    <p v-else>
+      No games to show
+    </p>
   </div>
 </template>
 
@@ -34,7 +40,7 @@ export default {
               rxjs.NEVER
           )
         )
-    }
+    };
   }
 };
 </script>
