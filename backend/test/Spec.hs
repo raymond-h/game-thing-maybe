@@ -2,12 +2,14 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 import Data.Maybe (isJust, fromJust, isNothing)
 import Data.Either (isLeft)
 import Control.Lens hiding ((.=))
 import Data.Aeson hiding (json)
 import qualified Control.Monad.State.Strict as S
+import qualified Control.Monad.Writer.Strict as W
 import Test.Hspec as H
 import Network.HTTP.Types
 import Test.Hspec.QuickCheck (prop)
@@ -107,6 +109,15 @@ setupEnv = do
   setEnv "AUTH0_DOMAIN" "domain"
   setEnv "AUTH0_CLIENT_ID" "client-id"
   setEnv "AUTH0_CLIENT_SECRET" "client-secret"
+
+type PusherAndState w a = W.WriterT [w] (S.State AS.AppState) a
+
+runPusherAndState :: AS.AppState -> PusherAndState w a -> (a, [w], AS.AppState)
+runPusherAndState initState action =
+  let
+    sAct = W.runWriterT action
+    ((a', ws), s) = S.runState sAct initState
+  in (a', ws, s :: AS.AppState)
 
 runInState = flip S.runState
 
@@ -268,15 +279,16 @@ main = hspec $ do
 
   describe "App logic" $ do
     let
-      pushClient :: [PC.EventChannel] -> P.Event -> P.EventData -> S.State AS.AppState ()
-      pushClient chans ev evData = AS.pusherEventsSent <>= [(PC.toChannel <$> chans, ev, evData)]
+      pushClient :: (W.MonadWriter [([P.Channel], P.Event, P.EventData)] m) =>
+        [PC.EventChannel] -> P.Event -> P.EventData -> m ()
+      pushClient chans ev evData = W.tell [(PC.toChannel <$> chans, ev, evData)]
 
     describe "user info service" $ do
       let
-        isUsernameInUse :: T.Text -> S.State AS.AppState Bool
+        isUsernameInUse :: (S.MonadState AS.AppState m) => T.Text -> m Bool
         isUsernameInUse uname = uses (AS.userByUsername uname) isJust
 
-        updateUser :: User -> S.State AS.AppState ()
+        updateUser :: (S.MonadState AS.AppState m) => User -> m ()
         updateUser = S.modify . AS.updateUser
 
         testUpdateUserInfo = UI.updateUserInfoLogic isUsernameInUse updateUser pushClient
@@ -292,11 +304,11 @@ main = hspec $ do
           user = User { _userId = "hello", _userUsername = Nothing }
           startAppState = addUser user initialAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testUpdateUserInfo user (UI.UserInfoBody $ Just "username")
 
         endAppState ^? (userById "hello")._Just.userUsername._Just `shouldBe` Just "username"
-        endAppState^.pusherEventsSent `shouldBe` [([P.Channel P.Private "hello-user-info"], "update-user-info", "{\"username\":\"username\"}")]
+        events `shouldBe` [([P.Channel P.Private "hello-user-info"], "update-user-info", "{\"username\":\"username\"}")]
         result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
 
       let
@@ -305,11 +317,11 @@ main = hspec $ do
             user = User { _userId = "hello", _userUsername = Nothing }
             startAppState = addUser user initialAppState
 
-            (result, endAppState) = runInState startAppState $
+            (result, events, endAppState) = runPusherAndState startAppState $
               testUpdateUserInfo user (UI.UserInfoBody $ Just un)
 
           endAppState ^? (userById "hello")._Just.userUsername._Just `shouldBe` Nothing
-          endAppState^.pusherEventsSent `shouldBe` []
+          events `shouldBe` []
           result ^? _Left.(at "username") `shouldSatisfy` isJust
 
       it "disallows too long username" $ usernameValidationTest "veryveryverylongusername"
@@ -321,11 +333,11 @@ main = hspec $ do
           user = User { _userId = "hello", _userUsername = Just "username" }
           startAppState = addUser user initialAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testUpdateUserInfo user (UI.UserInfoBody Nothing)
 
         endAppState ^? (userById "hello")._Just.userUsername._Just `shouldBe` Just "username"
-        endAppState^.pusherEventsSent `shouldBe` []
+        events `shouldBe` []
         result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
 
       it "disallows setting username to existing username" $ do
@@ -334,11 +346,11 @@ main = hspec $ do
           user2 = User { _userId = "other", _userUsername = Just "Existing" }
           startAppState = addUser user2 $ addUser user1 $ initialAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testUpdateUserInfo user1 (UI.UserInfoBody $ Just "Existing")
 
         endAppState `shouldBe` startAppState
-        endAppState^.pusherEventsSent `shouldBe` []
+        events `shouldBe` []
         result `shouldBe` Left (M.singleton "username" ["Username already in use"])
 
       it "does not disallow setting username to your current username" $ do
@@ -347,11 +359,11 @@ main = hspec $ do
           user2 = User { _userId = "other", _userUsername = Just "Existing" }
           startAppState = addUser user2 $ addUser user1 $ initialAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testUpdateUserInfo user1 (UI.UserInfoBody $ Just "Something")
 
         endAppState `shouldBe` startAppState
-        endAppState^.pusherEventsSent `shouldBe` []
+        events `shouldBe` []
         result `shouldBe` (Right $ UI.UserInfoBody (Just "Something"))
 
       prop "allows getting user info of other users" $ \mUname -> do
@@ -367,23 +379,23 @@ main = hspec $ do
 
     describe "invite service" $ do
       let
-        lookupUser :: I.LookupCriteria -> S.State AS.AppState (Maybe AS.User)
+        lookupUser :: (S.MonadState AS.AppState m) => I.LookupCriteria -> m (Maybe AS.User)
         lookupUser (I.ById uid) = use $ userById uid
         lookupUser (I.ByUsername uname) = use $ userByUsername uname
 
-        lookupInvites :: AS.UserId -> S.State AS.AppState [AS.Invite]
+        lookupInvites :: (S.MonadState AS.AppState m) => AS.UserId -> m [AS.Invite]
         lookupInvites = S.gets . AS.findInvitesForUser
 
-        lookupInvite :: AS.Id -> S.State AS.AppState (Maybe AS.Invite)
+        lookupInvite :: (S.MonadState AS.AppState m) => AS.Id -> m (Maybe AS.Invite)
         lookupInvite invId = S.gets $ find (\inv -> _inviteId inv == Just invId) . view invites
 
-        addInvite :: AS.Invite -> S.State AS.AppState AS.Id
+        addInvite :: (S.MonadState AS.AppState m) => AS.Invite -> m AS.Id
         addInvite = S.state . AS.addInvite
 
-        removeInvite :: AS.Id -> S.State AS.AppState ()
+        removeInvite :: (S.MonadState AS.AppState m) => AS.Id -> m ()
         removeInvite invId = S.modify $ AS.deleteInvite invId
 
-        addGame :: AS.UserId -> AS.UserId -> S.State AS.AppState AS.GameAppState
+        addGame :: (S.MonadState AS.AppState m) => AS.UserId -> AS.UserId -> m AS.GameAppState
         addGame uid otherUid = S.state $ AS.createGame uid otherUid
 
         testGetInvites = I.getInvitesLogic lookupInvites
@@ -417,12 +429,12 @@ main = hspec $ do
           startAppState = testAppState
           (Just user) = getUserById "user1" startAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testCreateInvite user (I.InviteBodyUserId "user3")
 
         findInvitesForUser "user1" endAppState `shouldBe` []
         findInvitesForUser "user3" endAppState `shouldBe` []
-        endAppState^.pusherEventsSent `shouldBe` []
+        events `shouldBe` []
         result `shouldBe` Left (forbidden403, "Must set username first")
 
       it "creates invites by user ID" $ do
@@ -430,14 +442,14 @@ main = hspec $ do
           startAppState = testAppState
           (Just user) = getUserById "user2" startAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testCreateInvite user (I.InviteBodyUserId "user3")
 
           expectedInvite = Invite { _inviteId = Just 1, _invitePlayer1 = "user2", _invitePlayer2 = "user3" }
 
         findInvitesForUser "user2" endAppState `shouldBe` [expectedInvite]
         findInvitesForUser "user3" endAppState `shouldBe` [expectedInvite]
-        endAppState^.pusherEventsSent `shouldMatchList` [
+        events `shouldMatchList` [
             ([P.Channel P.Private "user2-invites", P.Channel P.Private "user3-invites"], "update-invites", "")
           ]
         result `shouldBe` Right expectedInvite
@@ -447,14 +459,14 @@ main = hspec $ do
           startAppState = testAppState
           (Just user) = getUserById "user2" startAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testCreateInvite user (I.InviteBodyUsername "anotheruser")
 
           expectedInvite = Invite { _inviteId = Just 1, _invitePlayer1 = "user2", _invitePlayer2 = "user3" }
 
         findInvitesForUser "user2" endAppState `shouldBe` [expectedInvite]
         findInvitesForUser "user3" endAppState `shouldBe` [expectedInvite]
-        endAppState^.pusherEventsSent `shouldMatchList` [
+        events `shouldMatchList` [
             ([P.Channel P.Private "user2-invites", P.Channel P.Private "user3-invites"], "update-invites", "")
           ]
         result `shouldBe` Right expectedInvite
@@ -464,11 +476,11 @@ main = hspec $ do
           startAppState = testAppState
           (Just user) = getUserById "user2" startAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testCreateInvite user (I.InviteBodyUserId "user2")
 
         findInvitesForUser "user2" endAppState `shouldBe` []
-        endAppState^.pusherEventsSent `shouldBe` []
+        events `shouldBe` []
         result `shouldBe` Left (badRequest400, "Cannot invite yourself")
 
       it "reports error if no user with given ID exists" $ do
@@ -476,12 +488,12 @@ main = hspec $ do
           startAppState = testAppState
           (Just user) = getUserById "user2" startAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testCreateInvite user (I.InviteBodyUserId "id-does-not-exist")
 
         findInvitesForUser "user2" endAppState `shouldBe` []
         findInvitesForUser "user3" endAppState `shouldBe` []
-        endAppState^.pusherEventsSent `shouldBe` []
+        events `shouldBe` []
         result `shouldBe` Left (badRequest400, "No such user")
 
       it "reports error if no user with given username exists" $ do
@@ -489,12 +501,12 @@ main = hspec $ do
           startAppState = testAppState
           (Just user) = getUserById "user2" startAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testCreateInvite user (I.InviteBodyUsername "uname-does-not-exist")
 
         findInvitesForUser "user2" endAppState `shouldBe` []
         findInvitesForUser "user3" endAppState `shouldBe` []
-        endAppState^.pusherEventsSent `shouldBe` []
+        events `shouldBe` []
         result `shouldBe` Left (badRequest400, "No such user")
 
       it "allows accepting invite" $ do
@@ -503,13 +515,13 @@ main = hspec $ do
           startAppState = testAppState & invites .~ M.singleton 5 invite
           (Just user) = getUserById "user3" startAppState
 
-          (result, endAppState) = runInState startAppState $ testAcceptInvite user (I.AcceptInviteBody 5)
+          (result, events, endAppState) = runPusherAndState startAppState $ testAcceptInvite user (I.AcceptInviteBody 5)
 
           expectedGame = GameAppState 1 ("user2", "user3") G.initialState
 
         endAppState^.invites `shouldBe` M.empty
         endAppState^.gameAppStates `shouldBe` M.singleton 1 expectedGame
-        endAppState^.pusherEventsSent `shouldMatchList` [
+        events `shouldMatchList` [
             ([P.Channel P.Private "user2-invites", P.Channel P.Private "user3-invites"], "update-invites", "")
           ]
         result `shouldBe` Right expectedGame
@@ -519,7 +531,7 @@ main = hspec $ do
           startAppState = testAppState
           (Just user) = getUserById "user2" startAppState
 
-          (result, endAppState) = runInState startAppState $ testAcceptInvite user (I.AcceptInviteBody 5)
+          (result, events, endAppState) = runPusherAndState startAppState $ testAcceptInvite user (I.AcceptInviteBody 5)
 
         endAppState^.gameAppStates `shouldBe` M.empty
         result `shouldBe` Left (status404, "No such invite")
@@ -531,11 +543,11 @@ main = hspec $ do
             startAppState = testAppState & invites .~ M.singleton 5 invite
             (Just user) = getUserById uname startAppState
 
-            (result, endAppState) = runInState startAppState $ testAcceptInvite user (I.AcceptInviteBody 5)
+            (result, events, endAppState) = runPusherAndState startAppState $ testAcceptInvite user (I.AcceptInviteBody 5)
 
           endAppState^.invites `shouldBe` M.singleton 5 invite
           endAppState^.gameAppStates `shouldBe` M.empty
-          endAppState^.pusherEventsSent `shouldBe` []
+          events `shouldBe` []
           result `shouldBe` Left (status403, "User not recipient of invite")
 
     describe "pusher auth service" $ do
@@ -570,11 +582,11 @@ main = hspec $ do
 
     describe "game state service" $ do
       let
-        lookupGame :: DB.GameAppStateId -> S.State AS.AppState (Maybe (Ps.Entity DB.GameAppState))
+        lookupGame :: (S.MonadState AS.AppState m) => DB.GameAppStateId -> m (Maybe (Ps.Entity DB.GameAppState))
         lookupGame gameId = uses AS.gameAppStates $
           fmap DB.toDbGameAppState . find (\gas -> gas ^. AS.gameAppStateId == DB.fromDbGameAppStateId gameId)
 
-        updateGame :: Ps.Entity DB.GameAppState -> S.State AS.AppState ()
+        updateGame :: (S.MonadState AS.AppState m) => Ps.Entity DB.GameAppState -> m ()
         updateGame gameEntity = S.modify $ AS.gameAppStates . at (asGas^.gameAppStateId) ?~ asGas
           where
             asGas = DB.fromDbGameAppState gameEntity
@@ -610,12 +622,12 @@ main = hspec $ do
           startAppState = testAppState & gameAppStates .~ M.singleton gameId game
           (Just user) = getUserById "user2" startAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testPerformMove (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
 
         endAppState ^. AS.gameAppStates . (at 5) `shouldNotBe` startAppState ^. AS.gameAppStates . (at 5)
         endAppState `shouldNotBe` startAppState
-        endAppState^.pusherEventsSent `shouldMatchList` [
+        events `shouldMatchList` [
             ([P.Channel P.Public "game-5"], "update-state", "")
           ]
         result `shouldBe` (Right $ DB.toDbGameAppState $ game { AS._gameAppStateState = expectedGameState })
@@ -625,11 +637,11 @@ main = hspec $ do
           startAppState = testAppState
           (Just user) = getUserById "user2" startAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testPerformMove (DB.toDbUser user) (DB.toDbGameAppStateId 5) G.MoveRollDice
 
         endAppState `shouldBe` startAppState
-        endAppState^.pusherEventsSent `shouldBe` []
+        events `shouldBe` []
         result `shouldBe` Left (status404, "No such game")
 
       it "does not let the player that is not the current player perform a move" $ do
@@ -645,11 +657,11 @@ main = hspec $ do
           startAppState = testAppState & gameAppStates .~ M.singleton gameId game
           (Just user) = getUserById "user3" startAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testPerformMove (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
 
         endAppState `shouldBe` startAppState
-        endAppState^.pusherEventsSent `shouldBe` []
+        events `shouldBe` []
         result `shouldBe` Left (status400, "Not this player's turn")
 
       it "does not let any user who is not a player perform a move" $ do
@@ -665,11 +677,11 @@ main = hspec $ do
           startAppState = testAppState & gameAppStates .~ M.singleton gameId game
           (Just user) = getUserById "user1" startAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testPerformMove (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
 
         endAppState `shouldBe` startAppState
-        endAppState^.pusherEventsSent `shouldBe` []
+        events `shouldBe` []
         result `shouldBe` Left (status400, "User not a player in this game")
 
       it "reports when invalid move performed" $ do
@@ -686,11 +698,11 @@ main = hspec $ do
           startAppState = testAppState & gameAppStates .~ M.singleton gameId game
           (Just user) = getUserById "user2" startAppState
 
-          (result, endAppState) = runInState startAppState $
+          (result, events, endAppState) = runPusherAndState startAppState $
             testPerformMove (DB.toDbUser user) (DB.toDbGameAppStateId gameId) move
 
         endAppState `shouldBe` startAppState
-        endAppState^.pusherEventsSent `shouldBe` []
+        events `shouldBe` []
         result `shouldBe` Left (status400, "Invalid move")
 
   dbPool <- runIO $ runNoLoggingT $ createSqlitePool ":memory:" 1
