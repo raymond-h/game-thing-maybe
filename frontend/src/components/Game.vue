@@ -141,6 +141,9 @@ export default {
   position: absolute;
   width: 60px;
   height: 60px;
+  transition-property: left top;
+  transition-duration: 0.3s;
+  transition-timing-function: ease-in-out;
 }
 
 .piece.player1 {
