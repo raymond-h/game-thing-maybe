@@ -13,8 +13,8 @@
       {{ isUsernameBeingChanged ? 'Changing...' : 'Change username' }}
     </button>
 
-    <my-invite-list />
-    <my-game-list />
+    <my-invite-list v-if="isAuthenticated" />
+    <my-game-list v-if="isAuthenticated" />
   </div>
 </template>
 
@@ -45,6 +45,8 @@ export default {
 
   subscriptions() {
     return {
+      isAuthenticated: authService.isAuthenticated$,
+
       userInfo: authService.isAuthenticated$
         .pipe(
           switchMap(isAuthed =>
