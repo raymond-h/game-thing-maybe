@@ -50,6 +50,8 @@ getGameStateLogic ::
   Either (Status, T.Text) (Entity DB.GameAppState)
 getGameStateLogic = V.noteE (status404, "No such game")
 
+plus4 a b c d = a + b + c + d
+
 performMove :: ActionM (Entity DB.User) -> Pool SqlBackend -> ([P.Channel] -> P.Event -> P.EventData -> S.ActionM ()) -> ActionM ()
 performMove auth dbPool pushClient = do
   user <- auth
@@ -57,7 +59,7 @@ performMove auth dbPool pushClient = do
   move <- S.jsonData
 
   let
-    randomDice = E.liftIO $ randomRIO (0, 4)
+    randomDice = E.liftIO $ plus4 <$> randomRIO (0, 1) <*> randomRIO (0, 1) <*> randomRIO (0, 1) <*> randomRIO (0, 1)
     lookupGame gameId = DB.runDbPool dbPool $ Ps.getEntity gameId
     updateGame gameEntity = DB.runDbPool dbPool $ Ps.replace (Ps.entityKey gameEntity) (Ps.entityVal gameEntity)
 
