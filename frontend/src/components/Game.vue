@@ -17,7 +17,7 @@
       <div
         v-for="piece in pieces"
         :key="piece.ix"
-        :class="['piece', piece.player]"
+        :class="['piece', piece.player, viewerType === piece.player ? 'own' : null]"
         :style="{left: piece.x + 'px', top: piece.y + 'px'}"
         @click="piece.isMine && isMyTurn ? $emit('move', piece.ix) : null"
       />
@@ -139,11 +139,18 @@ export default {
 
 .piece {
   position: absolute;
-  width: 60px;
-  height: 60px;
-  transition-property: left top;
-  transition-duration: 0.3s;
+  margin: 6px;
+  width: 48px;
+  height: 48px;
+  transition-property: left top transform;
+  transition-duration: 0.1s;
   transition-timing-function: ease-in-out;
+  transform-origin: 50% 50%;
+}
+
+.piece.own:hover {
+  cursor: pointer;
+  transform: scale(1.2) translate(0, 0px) rotate(10deg);
 }
 
 .piece.player1 {
