@@ -13,8 +13,8 @@
       {{ isUsernameBeingChanged ? 'Changing...' : 'Change username' }}
     </button>
 
-    <my-invite-list v-if="isAuthenticated" />
-    <my-game-list v-if="isAuthenticated" />
+    <my-invite-list v-if="hasUsernameSet" />
+    <my-game-list v-if="hasUsernameSet" />
   </div>
 </template>
 
@@ -35,13 +35,23 @@ export default {
     'my-game-list': GameList
   },
 
-  domStreams: ['changeUsernameBtn$'],
-
   data() {
     return {
       newUsername: ''
     };
   },
+
+  computed: {
+    hasUsernameSet() {
+      if(!this.isAuthenticated || this.userInfo == null) {
+        return false;
+      }
+
+      return this.userInfo.username != null;
+    }
+  },
+
+  domStreams: ['changeUsernameBtn$'],
 
   subscriptions() {
     return {
