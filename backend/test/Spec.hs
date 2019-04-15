@@ -308,7 +308,7 @@ main = hspec $ do
             testUpdateUserInfo user (UI.UserInfoBody $ Just "username")
 
         endAppState ^? (userById "hello")._Just.userUsername._Just `shouldBe` Just "username"
-        events `shouldBe` [([P.Channel P.Private "hello-user-info"], "update-user-info", "{\"username\":\"username\"}")]
+        events `shouldBe` [([P.Channel P.Public "hello-user-info"], "update-user-info", "{\"username\":\"username\"}")]
         result `shouldBe` (Right $ UI.UserInfoBody (Just "username"))
 
       let
