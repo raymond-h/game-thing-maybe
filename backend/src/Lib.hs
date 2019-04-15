@@ -124,10 +124,12 @@ data Environment = Production | Development | Test deriving (Eq, Show)
 
 -- we don't care if the file is missing
 loadDotenvConfig :: IO ()
-loadDotenvConfig = (void $ loadFile defaultConfig) `onMissingFile` return ()
+loadDotenvConfig = (void $ loadFile $ defaultConfig { configOverride = True }) `onMissingFile` return ()
 
 runApp :: IO ()
 runApp = do
+  loadDotenvConfig
+
   isDev <- fromMaybe False <$> getEnv' "DEV"
   mDbUri <- lookupEnv "DATABASE_URL"
 
