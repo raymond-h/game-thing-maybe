@@ -16,6 +16,6 @@ data EventChannel =
   | Game DB.GameAppStateId
 
 toChannel :: EventChannel -> P.Channel
-toChannel (UserInfo userId) = P.Channel P.Private (pusherizedUserId userId <> "-user-info")
+toChannel (UserInfo userId) = P.Channel P.Public (pusherizedUserId userId <> "-user-info")
 toChannel (Invites userId) = P.Channel P.Private (pusherizedUserId userId <> "-invites")
 toChannel (Game gameId) = P.Channel P.Public ("game-" <> (T.pack $ show $ Ps.fromSqlKey gameId))

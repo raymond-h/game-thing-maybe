@@ -10,19 +10,26 @@
       v-stream:pass="gameAction$"
       :game="game"
       :viewer-type="whichPlayer"
+      :username-map="usernames"
     />
   </div>
 </template>
 
 <script>
 import * as rxjs from 'rxjs';
-import { switchMap, pluck, filter, startWith, map, flatMap, ignoreElements, catchError, tap } from 'rxjs/operators';
+import {
+  switchMap, pluck, filter, startWith,
+  map, flatMap, ignoreElements, catchError,
+  tap, share, scan
+} from 'rxjs/operators';
+import _ from 'lodash';
 
 import * as api from '../api';
 import authService from '../api/auth';
 import { channelPool } from '../api/pusher';
 
 import Game from './Game';
+import { forkByKey } from '../util';
 
 export default {
   components: {
@@ -49,26 +56,47 @@ export default {
         return 'player2';
       }
       return null;
+    },
+
+    usernames() {
+      return _.mapValues(this.userInfos, ui => ui.username);
     }
   },
 
   domStreams: ['gameAction$'],
 
   subscriptions() {
+    const game = this.$watchAsObservable('gameId')
+      .pipe(
+        filter(d => d.newValue !== d.oldValue),
+        pluck('newValue'),
+        startWith(this.gameId),
+        switchMap((gameId) =>
+          (gameId != null) ?
+            api.getGameUpdates(channelPool, gameId) :
+            rxjs.NEVER
+        ),
+        share()
+      );
+
     return {
       ownId: authService.isAuthenticated$
         .pipe(map(isAuth => isAuth ? authService.userId : null)),
 
-      game: this.$watchAsObservable('gameId')
+      game,
+      userInfos: game
         .pipe(
-          filter(d => d.newValue !== d.oldValue),
-          pluck('newValue'),
-          startWith(this.gameId),
-          switchMap((gameId) =>
-            (gameId != null) ?
-              api.getGameUpdates(channelPool, gameId) :
-              rxjs.NEVER
-          )
+          filter(gameState => gameState != null),
+          map(gameState => [gameState.player1, gameState.player2]),
+          startWith([]),
+          forkByKey(userId =>
+            api.getUserInfoForUserUpdates(channelPool, userId)
+              .pipe(
+                map(data => ({ [userId]: data }))
+              )
+          ),
+          scan((acc, cur) => _.assign({}, acc, cur), {}),
+          startWith({})
         ),
 
       gameActions: this.gameAction$

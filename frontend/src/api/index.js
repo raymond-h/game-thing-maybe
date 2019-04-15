@@ -81,9 +81,17 @@ export function updateUserInfo(newUserInfo) {
 }
 
 export function getUserInfoUpdates(channelPool, userId) {
-  const channelName = `private-${userId.replace(/\|/, ';')}-user-info`;
+  const channelName = `${userId.replace(/\|/, ';')}-user-info`;
   return rxjs.merge(
     getUserInfo(),
+    channelEventObs(channelPool, channelName, 'update-user-info')
+  );
+}
+
+export function getUserInfoForUserUpdates(channelPool, userId) {
+  const channelName = `${userId.replace(/\|/, ';')}-user-info`;
+  return rxjs.merge(
+    getUserInfoForUser(userId),
     channelEventObs(channelPool, channelName, 'update-user-info')
   );
 }

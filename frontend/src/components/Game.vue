@@ -5,7 +5,7 @@
     </h3>
 
     <p class="player-info player2">
-      Player 2 ({{ game.player2 }}): {{ game.state.playerStates[1].wonPieces }} won pieces, {{ game.state.playerStates[1].outOfPlayPieces }} pieces out of play
+      Player 2 ({{ usernameMap[game.player2] || '...' }}): {{ game.state.playerStates[1].wonPieces }} won pieces, {{ game.state.playerStates[1].outOfPlayPieces }} pieces out of play
     </p>
 
     <div class="container">
@@ -24,7 +24,7 @@
     </div>
 
     <p class="player-info player1">
-      Player 1 ({{ game.player1 }}): {{ game.state.playerStates[0].wonPieces }} won pieces, {{ game.state.playerStates[0].outOfPlayPieces }} pieces out of play
+      Player 1 ({{ usernameMap[game.player1] || '...' }}): {{ game.state.playerStates[0].wonPieces }} won pieces, {{ game.state.playerStates[0].outOfPlayPieces }} pieces out of play
     </p>
 
     <p>Last dice roll: {{ game.state.lastRoll }}</p>
@@ -83,6 +83,10 @@ export default {
     viewerType: {
       type: String,
       default: null
+    },
+    usernameMap: {
+      type: Object,
+      default: {}
     }
   },
 
