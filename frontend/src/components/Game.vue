@@ -86,7 +86,7 @@ export default {
     },
     usernameMap: {
       type: Object,
-      default: {}
+      default: () => ({})
     }
   },
 
