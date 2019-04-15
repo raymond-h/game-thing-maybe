@@ -2,16 +2,18 @@
   <div>
     <p>This is the main page!! {{ userInfo }}</p>
 
-    <input
-      v-model="newUsername"
-      type="text"
-    >
-    <button
-      v-stream:click="{ subject: changeUsernameBtn$, data: newUsername }"
-      :disabled="isUsernameBeingChanged"
-    >
-      {{ isUsernameBeingChanged ? 'Changing...' : 'Change username' }}
-    </button>
+    <div v-if="isAuthenticated">
+      <input
+        v-model="newUsername"
+        type="text"
+      >
+      <button
+        v-stream:click="{ subject: changeUsernameBtn$, data: newUsername }"
+        :disabled="isUsernameBeingChanged"
+      >
+        {{ isUsernameBeingChanged ? 'Changing...' : 'Change username' }}
+      </button>
+    </div>
 
     <my-invite-list v-if="hasUsernameSet" />
     <my-game-list v-if="hasUsernameSet" />
