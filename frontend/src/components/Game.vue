@@ -16,7 +16,7 @@
 
       <div
         v-for="piece in pieces"
-        :key="piece.ix"
+        :key="piece.player + '-' + piece.ix"
         :class="['piece', piece.player, viewerType === piece.player ? 'own' : null]"
         :style="{left: piece.x + 'px', top: piece.y + 'px'}"
         @click="piece.isMine && isMyTurn ? $emit('move', piece.ix) : null"
