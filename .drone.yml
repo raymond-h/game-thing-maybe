@@ -18,9 +18,9 @@ pipeline:
     environment:
       - 'API_URL=https://advance-wars-maybe-backend.raymond-h.me'
       - 'AUTH0_DOMAIN=advance-wars-maybe.eu.auth0.com'
-      - 'AUTH0_REDIRECT_URI=https://game-thing-maybe.netlify.com/login_callback'
+      - 'AUTH0_REDIRECT_URI=https://ur-online.netlify.com/login_callback'
       - 'AUTH0_AUDIENCE=https://advance-wars-maybe-backend.raymond-h.me/'
-      - 'AUTH0_LOGOUT_URL=https://game-thing-maybe.netlify.com/'
+      - 'AUTH0_LOGOUT_URL=https://ur-online.netlify.com/'
       - 'PUSHER_CLUSTER=eu'
     secrets: [ auth0_client_id, pusher_app_key ]
     commands:
