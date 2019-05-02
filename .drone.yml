@@ -21,9 +21,8 @@ pipeline:
       - 'AUTH0_REDIRECT_URI=https://game-thing-maybe.netlify.com/login_callback'
       - 'AUTH0_AUDIENCE=https://advance-wars-maybe-backend.raymond-h.me/'
       - 'AUTH0_LOGOUT_URL=https://game-thing-maybe.netlify.com/'
-      - 'PUSHER_APP_KEY=c95114659ae51046d6c6'
       - 'PUSHER_CLUSTER=eu'
-    secrets: [ auth0_client_id ]
+    secrets: [ auth0_client_id, pusher_app_key ]
     commands:
       - cd frontend/
       - npm install
@@ -35,10 +34,10 @@ pipeline:
   deploy-backend:
     image: ebiwd/alpine-ssh
     group: deploy
-    secrets: [ dokku_key ]
+    secrets: [ dokku_key, dokku_host ]
     commands:
       - 'add-ssh-key dokku "$DOKKU_KEY"'
-      - 'ssh dokku@raymond-h.me -- tar:in advance-wars-maybe-backend < backend/out.tar'
+      - 'ssh "$DOKKU_HOST" -- tar:in advance-wars-maybe-backend < backend/out.tar'
     when:
       event: push
       branch: master
