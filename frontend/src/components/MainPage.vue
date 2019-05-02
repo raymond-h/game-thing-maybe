@@ -1,6 +1,8 @@
 <template>
   <div>
-    <p v-if="isAuthenticated && !hasUsernameSet">Please select a unique username for yourself:</p>
+    <p v-if="isAuthenticated && !hasUsernameSet">
+      Please select a unique username for yourself:
+    </p>
     <div v-if="isAuthenticated">
       <input
         v-model="newUsername"

@@ -27,7 +27,7 @@ import authService from '../api/auth';
 import * as api from '../api';
 import { channelPool } from '../api/pusher';
 import * as rxjs from 'rxjs';
-import { flatMap, switchMap } from 'rxjs/operators';
+import { switchMap } from 'rxjs/operators';
 
 export default {
   subscriptions() {

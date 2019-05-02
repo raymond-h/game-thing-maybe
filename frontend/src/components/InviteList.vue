@@ -31,7 +31,9 @@
       No invites to show
     </p>
 
-    <p v-if="acceptInviteResult != null && acceptInviteResult !== ''">Error when accepting invite: {{ acceptInviteResult }}</p>
+    <p v-if="acceptInviteResult != null && acceptInviteResult !== ''">
+      Error when accepting invite: {{ acceptInviteResult }}
+    </p>
   </div>
 </template>
 
