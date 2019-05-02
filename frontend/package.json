@@ -13,6 +13,7 @@
   "scripts": {
     "build": "parcel build --public-url / src/index.html",
     "lint": "eslint --ext .js,.vue --fix src/ test/",
+    "lint:ci": "eslint --ext .js,.vue src/ test/",
     "prepublish": "run-s lint test",
     "start": "parcel -p 8000 src/index.html",
     "test": "ava",

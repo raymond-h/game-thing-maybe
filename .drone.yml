@@ -27,7 +27,7 @@ pipeline:
     commands:
       - cd frontend/
       - npm install
-      - npm run lint
+      - npm run lint:ci
       - npm test
       - npm run build
       - cp -R static/* dist/
