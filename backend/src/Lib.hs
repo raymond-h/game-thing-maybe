@@ -209,7 +209,7 @@ createApp environment dbPool = do
     S.get "/some-json" $ auth >> do
       S.json $ object ["foo" .= Number 23, "bar" .= Number 42]
 
-    when isDev $
+    when isDev $ do
       S.get "/.env" $ auth >> do
         env <- liftIO getEnvironment
         S.json . listOfPairsToObject $ env
