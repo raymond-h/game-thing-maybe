@@ -1,7 +1,6 @@
 <template>
   <div>
-    <p>This is the main page!! {{ userInfo }}</p>
-
+    <p v-if="isAuthenticated && !hasUsernameSet">Please select a unique username for yourself:</p>
     <div v-if="isAuthenticated">
       <input
         v-model="newUsername"

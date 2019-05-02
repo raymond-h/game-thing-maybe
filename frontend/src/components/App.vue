@@ -6,15 +6,14 @@
         v-if="!authenticated"
         @click="login"
       >
-        Login
+        Log in / Sign up
       </button>
       <button
         v-if="authenticated"
         @click="logout"
       >
-        Logout
+        Log out
       </button>
-      {{ someJson }}
     </h1>
     <div class="contents">
       <!-- eslint-disable -->
@@ -42,18 +41,14 @@ export default {
               rxjs.NEVER
           )
         ),
-      someJson: authService.isAuthenticated$
-        .pipe(
-          flatMap(isAuth => isAuth ? api.someJson() : rxjs.of())
-        )
     };
   },
 
   computed: {
     title() {
-      if(this.userInfo == null) return 'hello world';
+      if(this.userInfo == null || this.userInfo.username == null) return 'Welcome!';
 
-      return `hello ${this.userInfo.username}!!`;
+      return `Hello ${this.userInfo.username}!`;
     }
   },
 
@@ -88,13 +83,21 @@ body {
   color: white;
   background: rgb(0, 255, 0);
   margin: 0;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
   grid-column-start: 2;
   grid-row-start: 1;
+}
+
+.title-bar > * {
+  margin: 8px;
 }
 
 .contents {
   background: rgb(127, 127, 255);
   grid-column-start: 2;
   grid-row-start: 2;
+  padding: 16px;
 }
 </style>

@@ -8,6 +8,7 @@
     <button v-stream:click="{ subject: sendInvite$, data: inviteField }">
       Send invite
     </button>
+    <span>{{ sendInviteResult }}</span>
 
     <p v-if="invites == null">
       Loading...
@@ -30,15 +31,14 @@
       No invites to show
     </p>
 
-    <p>{{ sendInviteResult }}</p>
-    <p>{{ acceptInviteResult }}</p>
+    <p v-if="acceptInviteResult != null && acceptInviteResult !== ''">Error when accepting invite: {{ acceptInviteResult }}</p>
   </div>
 </template>
 
 <script>
 import { uniq, assign } from 'lodash';
 import * as rxjs from 'rxjs';
-import { switchMap, pluck, flatMap, catchError, map, share, scan } from 'rxjs/operators';
+import { switchMap, pluck, flatMap, catchError, map, share, scan, mapTo, startWith, ignoreElements } from 'rxjs/operators';
 
 import * as api from '../api';
 import authService from '../api/auth';
@@ -107,14 +107,22 @@ export default {
       sendInviteResult: this.sendInvite$
         .pipe(
           pluck('data'),
-          flatMap(username => api.sendInviteToUsername(username)),
+          flatMap(username =>
+            api.sendInviteToUsername(username)
+              .pipe(
+                mapTo('Success!'),
+                startWith('Sending...')
+              )
+          ),
           catchError((err, origObs) => rxjs.concat(rxjs.of(err.body.error), origObs))
         ),
 
       acceptInviteResult: this.acceptInvite$
         .pipe(
           pluck('data'),
-          flatMap(invite => api.acceptInvite(invite.id))
+          flatMap(invite => api.acceptInvite(invite.id)),
+          ignoreElements(),
+          catchError((err, origObs) => rxjs.concat(rxjs.of(err.body.error), origObs))
         )
     };
   }
